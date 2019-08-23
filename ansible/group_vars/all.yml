@@ -1,0 +1,1083 @@
+---
+# The options in this file can be overridden in 'globals.yml'
+
+# The "temp" files that are created before merge need to stay persistent due
+# to the fact that ansible will register a "change" if it has to create them
+# again. Persistent files allow for idempotency
+container_config_directory: "/var/lib/kolla/config_files"
+
+# The directory on the deploy host containing globals.yml.
+node_config: "{{ CONFIG_DIR | default('/etc/kolla') }}"
+
+# The directory to merge custom config files the kolla's config files
+node_custom_config: "/etc/kolla/config"
+
+# The directory to store the config files on the destination node
+node_config_directory: "/etc/kolla"
+
+# The group which own node_config_directory, you can use a non-root
+# user to deploy kolla
+config_owner_user: "root"
+config_owner_group: "root"
+
+
+###################
+# Kolla options
+###################
+# Valid options are [ COPY_ONCE, COPY_ALWAYS ]
+config_strategy: "COPY_ALWAYS"
+
+# Valid options are ['centos', 'debian', 'oraclelinux', 'rhel', 'ubuntu']
+kolla_base_distro: "centos"
+# Valid options are [ binary, source ]
+kolla_install_type: "binary"
+
+kolla_internal_vip_address: "{{ kolla_internal_address }}"
+kolla_internal_fqdn: "{{ kolla_internal_vip_address }}"
+kolla_external_vip_address: "{{ kolla_internal_vip_address }}"
+kolla_external_fqdn: "{{ kolla_internal_fqdn if kolla_external_vip_address == kolla_internal_vip_address else kolla_external_vip_address }}"
+
+kolla_enable_sanity_checks: "no"
+
+kolla_enable_sanity_barbican: "{{ kolla_enable_sanity_checks }}"
+kolla_enable_sanity_keystone: "{{ kolla_enable_sanity_checks }}"
+kolla_enable_sanity_glance: "{{ kolla_enable_sanity_checks }}"
+kolla_enable_sanity_cinder: "{{ kolla_enable_sanity_checks }}"
+kolla_enable_sanity_swift: "{{ kolla_enable_sanity_checks }}"
+
+kolla_dev_repos_directory: "/opt/stack/"
+kolla_dev_repos_git: "https://opendev.org/openstack"
+kolla_dev_repos_pull: "no"
+kolla_dev_mode: "no"
+kolla_source_version: "master"
+
+# Proxy settings for containers such as magnum that need internet access
+container_http_proxy: ""
+container_https_proxy: ""
+container_no_proxy: "localhost,127.0.0.1"
+
+container_proxy:
+  http_proxy: "{{ container_http_proxy }}"
+  https_proxy: "{{ container_https_proxy }}"
+  no_proxy: "{{ container_no_proxy }},{{ api_interface_address }},{{ kolla_internal_vip_address }}"
+
+# By default, Kolla API services bind to the network address assigned
+# to the api_interface.  Allow the bind address to be an override.
+api_interface_address: "{{ hostvars[inventory_hostname]['ansible_' + api_interface]['ipv4']['address'] }}"
+
+# This is used to get the ip corresponding to the storage_interface.
+storage_interface_address: "{{ hostvars[inventory_hostname]['ansible_' + storage_interface]['ipv4']['address'] }}"
+
+################
+# Chrony options
+################
+# A list contains ntp servers
+external_ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+  - 3.pool.ntp.org
+
+####################
+# Database options
+####################
+database_address: "{{ kolla_internal_fqdn }}"
+database_user: "root"
+database_port: "3306"
+
+
+####################
+# Docker options
+####################
+docker_registry_email:
+docker_registry:
+docker_namespace: "kolla"
+docker_registry_username:
+docker_registry_insecure: "{{ 'yes' if docker_registry else 'no' }}"
+docker_runtime_directory: ""
+
+# Retention settings for Docker logs
+docker_log_max_file: 5
+docker_log_max_size: 50m
+
+# Valid options are [ no, on-failure, always, unless-stopped ]
+docker_restart_policy: "unless-stopped"
+
+# '0' means unlimited retries (applies only to 'on-failure' policy)
+docker_restart_policy_retry: "10"
+
+# Extra docker options for Zun
+docker_configure_for_zun: "no"
+docker_zun_options: -H fd:// -H tcp://{{ api_interface_address }}:2375 --cluster-store=etcd://{% for host in groups.get('etcd', []) %}{{ hostvars[host]['ansible_' + hostvars[host]['api_interface']]['ipv4']['address'] }}:{{ hostvars[host]['etcd_client_port'] }}{% if not loop.last %},{% endif %}{% endfor %}
+
+# Common options used throughout Docker
+docker_common_options:
+  auth_email: "{{ docker_registry_email }}"
+  auth_password: "{{ docker_registry_password }}"
+  auth_registry: "{{ docker_registry }}"
+  auth_username: "{{ docker_registry_username }}"
+  environment:
+    KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+  restart_policy: "{{ docker_restart_policy }}"
+  restart_retries: "{{ docker_restart_policy_retry }}"
+
+####################
+# Dimensions options
+####################
+# Dimension options for Docker Containers
+default_container_dimensions: {}
+
+
+#######################
+# Extra volumes options
+#######################
+# Extra volumes for Docker Containers
+default_extra_volumes: []
+
+####################
+# keepalived options
+####################
+# Arbitrary unique number from 0..255
+keepalived_virtual_router_id: "51"
+
+
+#######################
+# Elasticsearch Options
+#######################
+es_heap_size: "1G"
+elasticsearch_datadir_volume: "elasticsearch"
+
+###################
+# Messaging options
+###################
+# olso.messaging rpc transport valid options are [ rabbit, amqp ]
+om_rpc_transport: "rabbit"
+om_rpc_user: "{{ rabbitmq_user }}"
+om_rpc_password: "{{ rabbitmq_password }}"
+om_rpc_port: "{{ rabbitmq_port }}"
+om_rpc_group: "rabbitmq"
+om_rpc_vhost: "/"
+
+rpc_transport_url: "{{ om_rpc_transport }}://{% for host in groups[om_rpc_group] %}{{ om_rpc_user }}:{{ om_rpc_password }}@{{ hostvars[host]['ansible_' + hostvars[host]['api_interface']]['ipv4']['address'] }}:{{ om_rpc_port }}{% if not loop.last %},{% endif %}{% endfor %}/{{ om_rpc_vhost }}"
+
+# oslo.messaging notify transport valid options are [ rabbit ]
+om_notify_transport: "rabbit"
+om_notify_user: "{{ rabbitmq_user }}"
+om_notify_password: "{{ rabbitmq_password }}"
+om_notify_port: "{{ rabbitmq_port }}"
+om_notify_group: "rabbitmq"
+om_notify_vhost: "/"
+
+notify_transport_url: "{{ om_notify_transport }}://{% for host in groups[om_notify_group] %}{{ om_notify_user }}:{{ om_notify_password }}@{{ hostvars[host]['ansible_' + hostvars[host]['api_interface']]['ipv4']['address'] }}:{{ om_notify_port }}{% if not loop.last %},{% endif %}{% endfor %}/{{ om_notify_vhost }}"
+
+####################
+# Networking options
+####################
+network_interface: "eth0"
+neutron_external_interface: "eth1"
+kolla_external_vip_interface: "{{ network_interface }}"
+api_interface: "{{ network_interface }}"
+storage_interface: "{{ network_interface }}"
+cluster_interface: "{{ network_interface }}"
+swift_storage_interface: "{{ storage_interface }}"
+swift_replication_interface: "{{ swift_storage_interface }}"
+migration_interface: "{{ network_interface }}"
+tunnel_interface: "{{ network_interface }}"
+octavia_network_interface: "{{ api_interface }}"
+bifrost_network_interface: "{{ network_interface }}"
+dns_interface: "{{ network_interface }}"
+migration_interface_address: "{{ hostvars[inventory_hostname]['ansible_' + migration_interface]['ipv4']['address'] }}"
+tunnel_interface_address: "{{ hostvars[inventory_hostname]['ansible_' + tunnel_interface]['ipv4']['address'] }}"
+octavia_network_interface_address: "{{ hostvars[inventory_hostname]['ansible_' + octavia_network_interface]['ipv4']['address'] }}"
+
+# Valid options are [ openvswitch, linuxbridge, vmware_nsxv, vmware_nsxv3, vmware_dvs, opendaylight ]
+neutron_plugin_agent: "openvswitch"
+
+# Valid options are [ internal, infoblox ]
+neutron_ipam_driver: "internal"
+
+# The default ports used by each service.
+# The list should be in alphabetical order
+aodh_internal_fqdn: "{{ kolla_internal_fqdn }}"
+aodh_external_fqdn: "{{ kolla_external_fqdn }}"
+aodh_api_port: "8042"
+aodh_api_listen_port: "{{ aodh_api_port }}"
+
+barbican_internal_fqdn: "{{ kolla_internal_fqdn }}"
+barbican_external_fqdn: "{{ kolla_external_fqdn }}"
+barbican_api_port: "9311"
+barbican_api_listen_port: "{{ barbican_api_port }}"
+
+blazar_api_port: "1234"
+
+cinder_internal_fqdn: "{{ kolla_internal_fqdn }}"
+cinder_external_fqdn: "{{ kolla_external_fqdn }}"
+cinder_api_port: "8776"
+cinder_api_listen_port: "{{ cinder_api_port }}"
+
+congress_api_port: "1789"
+
+cloudkitty_api_port: "8889"
+
+collectd_udp_port: "25826"
+
+cyborg_api_port: "6666"
+
+designate_internal_fqdn: "{{ kolla_internal_fqdn }}"
+designate_external_fqdn: "{{ kolla_external_fqdn }}"
+designate_api_port: "9001"
+designate_api_listen_port: "{{ designate_api_port }}"
+designate_bind_port: "53"
+designate_mdns_port: "{{ '53' if designate_backend == 'infoblox' else '5354' }}"
+designate_rndc_port: "953"
+
+elasticsearch_port: "9200"
+
+etcd_client_port: "2379"
+etcd_peer_port: "2380"
+
+fluentd_syslog_port: "5140"
+
+freezer_api_port: "9090"
+
+glance_internal_fqdn: "{{ kolla_internal_fqdn }}"
+glance_external_fqdn: "{{ kolla_external_fqdn }}"
+glance_api_port: "9292"
+glance_api_listen_port: "{{ glance_api_port }}"
+
+gnocchi_internal_fqdn: "{{ kolla_internal_fqdn }}"
+gnocchi_external_fqdn: "{{ kolla_external_fqdn }}"
+gnocchi_api_port: "8041"
+gnocchi_api_listen_port: "{{ gnocchi_api_port }}"
+
+grafana_server_port: "3000"
+
+haproxy_stats_port: "1984"
+haproxy_monitor_port: "61313"
+
+heat_internal_fqdn: "{{ kolla_internal_fqdn }}"
+heat_external_fqdn: "{{ kolla_external_fqdn }}"
+heat_api_port: "8004"
+heat_api_listen_port: "{{ heat_api_port }}"
+heat_cfn_internal_fqdn: "{{ kolla_internal_fqdn }}"
+heat_cfn_external_fqdn: "{{ kolla_external_fqdn }}"
+heat_api_cfn_port: "8000"
+heat_api_cfn_listen_port: "{{ heat_api_cfn_port }}"
+
+horizon_port: "80"
+horizon_listen_port: "{{ horizon_port }}"
+
+influxdb_admin_port: "8083"
+influxdb_http_port: "8086"
+
+ironic_internal_fqdn: "{{ kolla_internal_fqdn }}"
+ironic_external_fqdn: "{{ kolla_external_fqdn }}"
+ironic_api_port: "6385"
+ironic_api_listen_port: "{{ ironic_api_port }}"
+ironic_inspector_internal_fqdn: "{{ kolla_internal_fqdn }}"
+ironic_inspector_external_fqdn: "{{ kolla_external_fqdn }}"
+ironic_inspector_port: "5050"
+ironic_inspector_listen_port: "{{ ironic_inspector_port }}"
+ironic_ipxe_port: "8089"
+
+iscsi_port: "3260"
+
+kafka_port: "9092"
+
+karbor_api_port: "8799"
+
+keystone_public_port: "5000"
+keystone_public_listen_port: "{{ keystone_public_port }}"
+keystone_admin_port: "35357"
+keystone_admin_listen_port: "{{ keystone_admin_port }}"
+keystone_ssh_port: "8023"
+
+kibana_server_port: "5601"
+
+kuryr_port: "23750"
+
+magnum_api_port: "9511"
+
+manila_api_port: "8786"
+
+mariadb_port: "{{ database_port }}"
+mariadb_wsrep_port: "4567"
+mariadb_ist_port: "4568"
+mariadb_sst_port: "4444"
+
+masakari_api_port: "15868"
+
+memcached_port: "11211"
+
+mistral_api_port: "8989"
+
+monasca_api_port: "8070"
+monasca_log_api_port: "5607"
+monasca_agent_forwarder_port: "17123"
+monasca_agent_statsd_port: "8125"
+monasca_grafana_server_port: "3001"
+
+mongodb_port: "27017"
+mongodb_web_port: "28017"
+
+murano_api_port: "8082"
+
+neutron_internal_fqdn: "{{ kolla_internal_fqdn }}"
+neutron_external_fqdn: "{{ kolla_external_fqdn }}"
+neutron_server_port: "9696"
+neutron_server_listen_port: "{{ neutron_server_port }}"
+
+nova_internal_fqdn: "{{ kolla_internal_fqdn }}"
+nova_external_fqdn: "{{ kolla_external_fqdn }}"
+nova_api_port: "8774"
+nova_api_listen_port: "{{ nova_api_port }}"
+nova_metadata_port: "8775"
+nova_metadata_listen_port: "{{ nova_metadata_port }}"
+nova_novncproxy_fqdn: "{{ kolla_external_fqdn }}"
+nova_novncproxy_port: "6080"
+nova_novncproxy_listen_port: "{{ nova_novncproxy_port }}"
+nova_spicehtml5proxy_fqdn: "{{ kolla_external_fqdn }}"
+nova_spicehtml5proxy_port: "6082"
+nova_spicehtml5proxy_listen_port: "{{ nova_spicehtml5proxy_port }}"
+nova_serialproxy_fqdn: "{{ kolla_external_fqdn }}"
+nova_serialproxy_port: "6083"
+nova_serialproxy_listen_port: "{{ nova_serialproxy_port }}"
+
+octavia_internal_fqdn: "{{ kolla_internal_fqdn }}"
+octavia_external_fqdn: "{{ kolla_external_fqdn }}"
+octavia_api_port: "9876"
+octavia_api_listen_port: "{{ octavia_api_port }}"
+octavia_health_manager_port: "5555"
+
+outward_rabbitmq_port: "5674"
+outward_rabbitmq_management_port: "15674"
+outward_rabbitmq_cluster_port: "25674"
+outward_rabbitmq_epmd_port: "4371"
+
+ovsdb_port: "6640"
+
+panko_api_port: "8977"
+
+placement_internal_fqdn: "{{ kolla_internal_fqdn }}"
+placement_external_fqdn: "{{ kolla_external_fqdn }}"
+placement_api_port: "8780"
+placement_api_listen_port: "{{ placement_api_port }}"
+
+prometheus_port: "9091"
+prometheus_node_exporter_port: "9100"
+prometheus_mysqld_exporter_port: "9104"
+prometheus_haproxy_exporter_port: "9101"
+prometheus_memcached_exporter_port: "9150"
+prometheus_ceph_mgr_exporter_port: "9283"
+# Default cadvisor port of 8080 already in use
+prometheus_cadvisor_port: "18080"
+
+# Prometheus alertmanager ports
+prometheus_alertmanager_port: "9093"
+prometheus_alertmanager_cluster_port: "9094"
+
+# Prometheus openstack-exporter ports
+prometheus_openstack_exporter_port: "9198"
+prometheus_elasticsearch_exporter_port: "9108"
+
+qdrouterd_port: "31459"
+
+qinling_api_port: "7070"
+
+rabbitmq_port: "5672"
+rabbitmq_management_port: "15672"
+rabbitmq_cluster_port: "25672"
+rabbitmq_epmd_port: "4369"
+
+redis_port: "6379"
+redis_sentinel_port: "26379"
+
+rdp_port: "8001"
+
+rgw_port: "6780"
+
+sahara_api_port: "8386"
+
+searchlight_api_port: "9393"
+
+senlin_internal_fqdn: "{{ kolla_internal_fqdn }}"
+senlin_external_fqdn: "{{ kolla_external_fqdn }}"
+senlin_api_port: "8778"
+senlin_api_listen_port: "{{ senlin_api_port }}"
+
+skydive_analyzer_port: "8085"
+skydive_agents_port: "8090"
+
+solum_application_deployment_port: "9777"
+solum_image_builder_port: "9778"
+
+storm_nimbus_thrift_port: 6627
+storm_supervisor_thrift_port: 6628
+# Storm will run up to (end - start) + 1 workers per worker host. Here
+# we reserve ports for those workers, and implicitly define the maximum
+# number of workers per host.
+storm_worker_port_range:
+  start: 6700
+  end: 6703
+
+swift_internal_fqdn: "{{ kolla_internal_fqdn }}"
+swift_external_fqdn: "{{ kolla_external_fqdn }}"
+swift_proxy_server_port: "8080"
+swift_proxy_server_listen_port: "{{ swift_proxy_server_port }}"
+swift_object_server_port: "6000"
+swift_account_server_port: "6001"
+swift_container_server_port: "6002"
+swift_rsync_port: "10873"
+
+syslog_udp_port: "{{ fluentd_syslog_port }}"
+
+tacker_server_port: "9890"
+
+trove_api_port: "8779"
+
+watcher_api_port: "9322"
+
+zookeeper_client_port: "2181"
+zookeeper_peer_port: "2888"
+zookeeper_quorum_port: "3888"
+
+zun_api_port: "9517"
+zun_wsproxy_port: "6784"
+
+opendaylight_clustering_port: "2550"
+opendaylight_restconf_port: "8087"
+opendaylight_restconf_port_backup: "8182"
+opendaylight_haproxy_restconf_port: "8088"
+opendaylight_haproxy_restconf_port_backup: "8183"
+opendaylight_jetty_conf_port: "8543"
+opendaylight_jetty_conf2_port: "8443"
+opendaylight_tomcat_port: "8282"
+opendaylight_tomcat_redirect_port: "8663"
+opendaylight_karaf_ssh_port: "8101"
+opendaylight_openflow_port: "6653"
+opendaylight_ovsdb_port: "6641"
+opendaylight_websocket_port: "8185"
+
+vitrage_api_port: "8999"
+
+public_protocol: "{{ 'https' if kolla_enable_tls_external | bool else 'http' }}"
+internal_protocol: "http"
+admin_protocol: "http"
+
+####################
+# OpenStack options
+####################
+openstack_release: "auto"
+openstack_logging_debug: "False"
+
+openstack_region_name: "RegionOne"
+
+# Variable defined the pin_release_version, apply for rolling upgrade process
+openstack_previous_release_name: "stein"
+
+# A list of policy file formats that are supported by Oslo.policy
+supported_policy_format_list:
+  - policy.yaml
+  - policy.json
+
+# In the context of multi-regions, list here the name of all your regions.
+multiple_regions_names:
+  - "{{ openstack_region_name }}"
+
+openstack_service_workers: "{{ [ansible_processor_vcpus, 5]|min }}"
+openstack_service_rpc_workers: "{{ [ansible_processor_vcpus, 3]|min }}"
+
+# Optionally allow Kolla to set sysctl values
+set_sysctl: "yes"
+
+# Valid options are [ none, novnc, spice, rdp ]
+nova_console: "novnc"
+
+# Endpoint type used to connect with OpenStack services with ansible modules.
+# Valid options are [ public, internal, admin ]
+openstack_interface: "admin"
+
+# Enable core OpenStack services. This includes:
+# glance, keystone, neutron, nova, heat, and horizon.
+enable_openstack_core: "yes"
+
+# These roles are required for Kolla to be operation, however a savvy deployer
+# could disable some of these required roles and run their own services.
+enable_glance: "{{ enable_openstack_core | bool }}"
+enable_haproxy: "yes"
+enable_keepalived: "{{ enable_haproxy | bool }}"
+enable_keystone: "{{ enable_openstack_core | bool }}"
+enable_mariadb: "yes"
+enable_memcached: "yes"
+enable_neutron: "{{ enable_openstack_core | bool }}"
+enable_nova: "{{ enable_openstack_core | bool }}"
+enable_rabbitmq: "{{ 'yes' if om_rpc_transport == 'rabbit' or om_notify_transport == 'rabbit' else 'no' }}"
+enable_outward_rabbitmq: "{{ enable_murano | bool }}"
+
+# Most memcache clients handle load-balancing via client side
+# hashing (consistent or not) logic, so going under the covers and messing
+# with things that the clients are not aware of is general wrong (but this
+# keeps the default as is...)
+enable_haproxy_memcached: "yes"
+
+# Additional optional OpenStack features and services are specified here
+enable_aodh: "no"
+enable_barbican: "no"
+enable_blazar: "no"
+# NOTE: This variable has been deprecated and will be removed in the U cycle.
+enable_cadf_notifications: "no"
+enable_ceilometer: "no"
+enable_ceilometer_ipmi: "no"
+enable_central_logging: "no"
+enable_ceph: "no"
+enable_ceph_mds: "no"
+enable_ceph_rgw: "no"
+enable_ceph_nfs: "no"
+enable_ceph_dashboard: "{{ enable_ceph | bool }}"
+enable_chrony: "yes"
+enable_cinder: "no"
+enable_cinder_backup: "yes"
+enable_cinder_backend_hnas_nfs: "no"
+enable_cinder_backend_iscsi: "{{ enable_cinder_backend_lvm | bool or enable_cinder_backend_zfssa_iscsi | bool }}"
+enable_cinder_backend_lvm: "no"
+enable_cinder_backend_nfs: "no"
+enable_cinder_backend_zfssa_iscsi: "no"
+enable_cinder_backend_quobyte: "no"
+enable_cloudkitty: "no"
+enable_congress: "no"
+enable_cyborg: "no"
+enable_designate: "no"
+enable_etcd: "no"
+enable_fluentd: "yes"
+enable_freezer: "no"
+enable_gnocchi: "no"
+enable_grafana: "no"
+enable_heat: "{{ enable_openstack_core | bool }}"
+enable_horizon: "{{ enable_openstack_core | bool }}"
+enable_horizon_blazar: "{{ enable_blazar | bool }}"
+enable_horizon_cloudkitty: "{{ enable_cloudkitty | bool }}"
+enable_horizon_congress: "{{ enable_congress | bool }}"
+enable_horizon_designate: "{{ enable_designate | bool }}"
+enable_horizon_fwaas: "{{ enable_neutron_fwaas | bool }}"
+enable_horizon_freezer: "{{ enable_freezer | bool }}"
+enable_horizon_heat: "{{ enable_heat | bool }}"
+enable_horizon_ironic: "{{ enable_ironic | bool }}"
+enable_horizon_karbor: "{{ enable_karbor | bool }}"
+enable_horizon_magnum: "{{ enable_magnum | bool }}"
+enable_horizon_manila: "{{ enable_manila | bool }}"
+enable_horizon_masakari: "{{ enable_masakari | bool }}"
+enable_horizon_mistral: "{{ enable_mistral | bool }}"
+enable_horizon_murano: "{{ enable_murano | bool }}"
+enable_horizon_neutron_vpnaas: "{{ enable_neutron_vpnaas | bool }}"
+enable_horizon_octavia: "{{ enable_octavia | bool }}"
+enable_horizon_qinling: "{{ enable_qinling | bool }}"
+enable_horizon_sahara: "{{ enable_sahara | bool }}"
+enable_horizon_searchlight: "{{ enable_searchlight | bool }}"
+enable_horizon_senlin: "{{ enable_senlin | bool }}"
+enable_horizon_solum: "{{ enable_solum | bool }}"
+enable_horizon_tacker: "{{ enable_tacker | bool }}"
+enable_horizon_trove: "{{ enable_trove | bool }}"
+enable_horizon_vitrage: "{{ enable_vitrage | bool }}"
+enable_horizon_watcher: "{{ enable_watcher | bool }}"
+enable_horizon_zun: "{{ enable_zun | bool }}"
+enable_hyperv: "no"
+enable_influxdb: "{{ enable_monasca | bool or (cloudkitty_storage_backend is defined and cloudkitty_storage_backend == 'influxdb') }}"
+enable_ironic: "no"
+enable_ironic_ipxe: "no"
+enable_ironic_neutron_agent: "{{ enable_neutron | bool and enable_ironic | bool }}"
+enable_ironic_pxe_uefi: "no"
+enable_iscsid: "{{ (enable_cinder | bool and enable_cinder_backend_iscsi | bool) or enable_ironic | bool }}"
+enable_karbor: "no"
+enable_kafka: "{{ enable_monasca | bool }}"
+enable_kuryr: "no"
+enable_magnum: "no"
+enable_manila: "no"
+enable_manila_backend_generic: "no"
+enable_manila_backend_hnas: "no"
+enable_manila_backend_cephfs_native: "no"
+enable_manila_backend_cephfs_nfs: "no"
+enable_masakari: "no"
+enable_mistral: "no"
+enable_monasca: "no"
+enable_mongodb: "no"
+enable_multipathd: "no"
+enable_murano: "no"
+enable_neutron_vpnaas: "no"
+enable_neutron_sriov: "no"
+enable_neutron_dvr: "no"
+enable_neutron_fwaas: "no"
+enable_neutron_qos: "no"
+enable_neutron_agent_ha: "no"
+enable_neutron_bgp_dragent: "no"
+enable_neutron_provider_networks: "no"
+enable_neutron_segments: "no"
+enable_neutron_sfc: "no"
+enable_neutron_metering: "no"
+enable_neutron_infoblox_ipam_agent: "no"
+enable_nova_serialconsole_proxy: "no"
+enable_nova_ssh: "yes"
+enable_octavia: "no"
+enable_onos: "no"
+enable_opendaylight: "no"
+enable_openvswitch: "{{ enable_neutron | bool and neutron_plugin_agent != 'linuxbridge' }}"
+enable_ovs_dpdk: "no"
+enable_osprofiler: "no"
+enable_panko: "no"
+enable_placement: "{{ enable_nova }}"
+enable_qdrouterd: "{{ 'yes' if om_rpc_transport == 'amqp' else 'no' }}"
+enable_qinling: "no"
+enable_rally: "no"
+enable_redis: "no"
+enable_sahara: "no"
+enable_searchlight: "no"
+enable_senlin: "no"
+enable_skydive: "no"
+enable_solum: "no"
+enable_storm: "{{ enable_monasca | bool }}"
+enable_swift: "no"
+enable_swift_s3api: "no"
+enable_tacker: "no"
+enable_telegraf: "no"
+enable_tempest: "no"
+enable_trove: "no"
+enable_trove_singletenant: "no"
+enable_vitrage: "no"
+enable_vmtp: "no"
+enable_watcher: "no"
+enable_xtrabackup: "no"
+enable_zookeeper: "{{ enable_kafka | bool }}"
+enable_zun: "no"
+
+ovs_datapath: "{{ 'netdev' if enable_ovs_dpdk | bool else 'system' }}"
+designate_keystone_user: "designate"
+ironic_keystone_user: "ironic"
+neutron_keystone_user: "neutron"
+nova_keystone_user: "nova"
+placement_keystone_user: "placement"
+murano_keystone_user: "murano"
+
+# Nova fake driver and the number of fake driver per compute node
+enable_nova_fake: "no"
+num_nova_fake_per_node: 5
+
+# Monitoring options are specified here
+enable_collectd: "no"
+enable_prometheus: "no"
+
+# Clean images options are specified here
+enable_destroy_images: "no"
+
+####################
+# Monasca options
+####################
+
+# The OpenStack username used by the Monasca Agent and the Fluentd Monasca
+# plugin to post logs and metrics from the control plane to Monasca.
+monasca_agent_user: "monasca-agent"
+
+# The OpenStack project to which the control plane logs and metrics are
+# tagged with. Only users with the monasca read only user role, or higher
+# can access these from the Monasca APIs.
+monasca_control_plane_project: "monasca_control_plane"
+
+####################
+# Global Options
+####################
+# List of containers to skip during stop command in YAML list format
+# skip_stop_containers:
+#   - container1
+#   - container2
+skip_stop_containers: []
+
+####################
+# Logging options
+####################
+
+elasticsearch_address: "{{ kolla_internal_fqdn }}"
+enable_elasticsearch: "{{ 'yes' if enable_central_logging | bool or enable_osprofiler | bool or enable_skydive | bool or enable_monasca | bool else 'no' }}"
+enable_kibana: "{{ 'yes' if enable_central_logging | bool or enable_monasca | bool else 'no' }}"
+
+####################
+# Redis options
+####################
+redis_connection_string: "redis://{% for host in groups['redis'] %}{% if host == groups['redis'][0] %}admin:{{ redis_master_password }}@{{ hostvars[host]['ansible_' + hostvars[host]['api_interface']]['ipv4']['address'] }}:{{ redis_sentinel_port }}?sentinel=kolla{% else %}&sentinel_fallback={{ hostvars[host]['ansible_' + hostvars[host]['api_interface']]['ipv4']['address'] }}:{{ redis_sentinel_port }}{% endif %}{% endfor %}&socket_timeout=60&retry_on_timeout=yes"
+
+####################
+# Osprofiler options
+####################
+# valid values: ["elasticsearch", "redis"]
+osprofiler_backend: "elasticsearch"
+elasticsearch_connection_string: "elasticsearch://{{ elasticsearch_address }}:{{ elasticsearch_port }}"
+osprofiler_backend_connection_string: "{{ redis_connection_string if osprofiler_backend == 'redis' else elasticsearch_connection_string }}"
+
+####################
+# RabbitMQ options
+####################
+rabbitmq_hipe_compile: "no"
+rabbitmq_user: "openstack"
+rabbitmq_monitoring_user: ""
+outward_rabbitmq_user: "openstack"
+
+####################
+# Qdrouterd options
+####################
+qdrouterd_user: "openstack"
+
+####################
+# HAProxy options
+####################
+haproxy_user: "openstack"
+haproxy_enable_external_vip: "{{ 'no' if kolla_external_vip_address == kolla_internal_vip_address else 'yes' }}"
+kolla_enable_tls_external: "no"
+kolla_external_fqdn_cert: "{{ node_config }}/certificates/haproxy.pem"
+kolla_external_fqdn_cacert: "{{ node_config }}/certificates/haproxy-ca.crt"
+
+
+####################
+# Kibana options
+####################
+kibana_user: "kibana"
+kibana_log_prefix: "flog"
+
+####################
+# Keystone options
+####################
+keystone_internal_fqdn: "{{ kolla_internal_fqdn }}"
+keystone_external_fqdn: "{{ kolla_external_fqdn }}"
+keystone_admin_url: "{{ admin_protocol }}://{{ keystone_internal_fqdn }}:{{ keystone_admin_port }}"
+keystone_internal_url: "{{ internal_protocol }}://{{ keystone_internal_fqdn }}:{{ keystone_public_port }}"
+keystone_public_url: "{{ public_protocol }}://{{ keystone_external_fqdn }}:{{ keystone_public_port }}"
+
+keystone_admin_user: "admin"
+keystone_admin_project: "admin"
+
+default_project_domain_name: "Default"
+default_project_domain_id: "default"
+
+default_user_domain_name: "Default"
+default_user_domain_id: "default"
+
+# Valid options are [ fernet ]
+keystone_token_provider: "fernet"
+# Keystone fernet token expiry in seconds. Default is 1 day.
+fernet_token_expiry: 86400
+# Keystone window to allow expired fernet tokens. Default is 2 days.
+fernet_token_allow_expired_window: 172800
+# Keystone fernet key rotation interval in seconds. Default is sum of token
+# expiry and allow expired window, 3 days. This ensures the minimum number
+# of keys are active. If this interval is lower than the sum of the token
+# expiry and allow expired window, multiple active keys will be necessary.
+fernet_key_rotation_interval: "{{ fernet_token_expiry + fernet_token_allow_expired_window }}"
+
+keystone_default_user_role: "_member_"
+
+# OpenStack authentication string. You should only need to override these if you
+# are changing the admin tenant/project or user.
+openstack_auth:
+  auth_url: "{{ keystone_admin_url }}"
+  username: "{{ keystone_admin_user }}"
+  password: "{{ keystone_admin_password }}"
+  project_name: "{{ keystone_admin_project }}"
+  domain_name: "default"
+  user_domain_name: "default"
+
+#######################
+# Glance options
+#######################
+# Using glance_backend_ceph rather than enable_ceph to determine whether to
+# use the file backend, as this allows for the external ceph case, where
+# enable_ceph is False.
+glance_backend_file: "{{ not (glance_backend_ceph | bool or glance_backend_swift | bool or glance_backend_vmware | bool) }}"
+glance_backend_ceph: "{{ enable_ceph }}"
+glance_backend_vmware: "no"
+enable_glance_image_cache: "no"
+# ceph backend has priority over swift in all-ceph clusters
+glance_backend_swift: "{{ not (enable_ceph | bool) and enable_swift | bool }}"
+glance_file_datadir_volume: "glance"
+glance_enable_rolling_upgrade: "no"
+glance_api_hosts: "{{ [groups['glance-api']|first] if glance_backend_file | bool and glance_file_datadir_volume == 'glance' else groups['glance-api'] }}"
+
+#######################
+# Barbican options
+#######################
+# Valid options are [ simple_crypto, p11_crypto ]
+barbican_crypto_plugin: "simple_crypto"
+barbican_library_path: "/usr/lib/libCryptoki2_64.so"
+
+########################
+### Panko options
+########################
+# Valid options are [ mongodb, mysql ]
+panko_database_type: "mysql"
+
+
+#################
+# Gnocchi options
+#################
+# Valid options are [ file, ceph, swift ]
+# Defaults to file if ceph and swift are enabled; explicitly set to either if required.
+gnocchi_backend_storage: "{% if enable_ceph | bool and not enable_swift | bool %}ceph{% elif enable_swift | bool and not enable_ceph | bool %}swift{% else %}file{% endif %}"
+
+# Valid options are [redis, '']
+gnocchi_incoming_storage: "{{ 'redis' if enable_redis | bool else '' }}"
+gnocchi_metric_datadir_volume: "gnocchi"
+
+
+#################################
+# Cinder options
+#################################
+cinder_backend_ceph: "{{ enable_ceph }}"
+cinder_backend_vmwarevc_vmdk: "no"
+cinder_volume_group: "cinder-volumes"
+cinder_target_helper: "tgtadm"
+# Valid options are [ '', redis, etcd ]
+cinder_coordination_backend: "{{ 'redis' if enable_redis|bool else 'etcd' if enable_etcd|bool else '' }}"
+
+# Valid options are [ nfs, swift, ceph ]
+cinder_backup_driver: "ceph"
+cinder_backup_share: ""
+cinder_backup_mount_options_nfs: ""
+
+#######################
+# Cloudkitty options
+#######################
+# Valid option is gnocchi
+cloudkitty_collector_backend: "gnocchi"
+
+#######################
+# Designate options
+#######################
+# Valid options are [ bind9, infoblox ]
+designate_backend: "bind9"
+designate_ns_record: "sample.openstack.org"
+designate_backend_external: "no"
+designate_backend_external_bind9_nameservers: ""
+
+#######################
+# Neutron options
+#######################
+neutron_bgp_router_id: "1.1.1.1"
+neutron_bridge_name: "{{ 'br-dvs' if neutron_plugin_agent == 'vmware_dvs' else 'br-ex' }}"
+# Comma-separated type of enabled ml2 type drivers
+neutron_type_drivers: "flat,vlan,vxlan"
+# Comma-separated types of tenant networks (should be listed in 'neutron_type_drivers')
+# NOTE: for ironic this list should also contain 'flat'
+neutron_tenant_network_types: "vxlan"
+
+# valid values: ["dvr", "dvr_no_external"]
+neutron_compute_dvr_mode: "dvr"
+computes_need_external_bridge: "{{ enable_neutron_dvr | bool and neutron_compute_dvr_mode == 'dvr' or enable_neutron_provider_networks | bool or enable_opendaylight | bool and neutron_plugin_agent != 'vmware_dvs' and not enable_onos | bool }}"
+
+# Default DNS resolvers for virtual networks
+neutron_dnsmasq_dns_servers: "1.1.1.1,8.8.8.8,8.8.4.4"
+
+#######################
+# Nova options
+#######################
+nova_backend_ceph: "{{ enable_ceph }}"
+nova_backend: "{{ 'rbd' if nova_backend_ceph | bool else 'default' }}"
+# Valid options are [ kvm, qemu, vmware, xenapi ]
+nova_compute_virt_type: "kvm"
+nova_instance_datadir_volume: "nova_compute"
+
+#######################
+# Murano options
+#######################
+murano_agent_rabbitmq_vhost: "muranoagent"
+murano_agent_rabbitmq_user: "muranoagent"
+
+
+#######################
+# Horizon options
+#######################
+horizon_backend_database: "{{ enable_murano | bool }}"
+horizon_keystone_multidomain: False
+
+# Enable deploying custom horizon policy files for services that don't have a
+# horizon plugin but have a policy file. Override these when you have services
+# not deployed by kolla-ansible but want custom policy files deployed for them
+# in horizon.
+enable_ceilometer_horizon_policy_file: "{{ enable_ceilometer }}"
+enable_cinder_horizon_policy_file: "{{ enable_cinder }}"
+enable_congress_horizon_policy_file: "{{ enable_congress }}"
+enable_glance_horizon_policy_file: "{{ enable_glance }}"
+enable_heat_horizon_policy_file: "{{ enable_heat }}"
+enable_keystone_horizon_policy_file: "{{ enable_keystone }}"
+enable_neutron_horizon_policy_file: "{{ enable_neutron }}"
+enable_nova_horizon_policy_file: "{{ enable_nova }}"
+
+#################
+# Octavia options
+#################
+# Load balancer topology options are [ SINGLE, ACTIVE_STANDBY ]
+octavia_loadbalancer_topology: "SINGLE"
+octavia_amp_boot_network_list:
+octavia_amp_secgroup_list:
+octavia_amp_flavor_id:
+
+#################
+# Qinling options
+#################
+# Configure qinling-engine certificates to authenticate with Kubernetes cluster.
+qinling_kubernetes_certificates: "no"
+
+###################
+# Ceph options
+###################
+# Ceph can be setup with a caching to improve performance. To use the cache you
+# must provide separate disks than those for the OSDs
+ceph_enable_cache: "no"
+
+external_ceph_cephx_enabled: "yes"
+
+# Ceph is not able to determine the size of a cache pool automatically,
+# so the configuration on the absolute size is required here, otherwise the flush/evict will not work.
+ceph_target_max_bytes: ""
+ceph_target_max_objects: ""
+
+# Valid options are [ forward, none, writeback ]
+ceph_cache_mode: "writeback"
+
+# Valid options are [ ext4, btrfs, xfs ]
+ceph_osd_filesystem: "xfs"
+
+# Set to 'yes-i-really-really-mean-it' to force wipe disks with existing partitions for OSDs. Only
+# set if you understand the consequences!
+ceph_osd_wipe_disk: ""
+
+# These are /etc/fstab options. Comma separated, no spaces (see fstab(8))
+ceph_osd_mount_options: "defaults,noatime"
+
+# A requirement for using the erasure-coded pools is you must setup a cache tier
+# Valid options are [ erasure, replicated ]
+ceph_pool_type: "replicated"
+
+# Integrate Ceph Rados Object Gateway with OpenStack keystone
+enable_ceph_rgw_keystone: "no"
+
+# Enable/disable ceph-rgw compatibility with OpenStack Swift
+# Valid options are [ True, False ]
+ceph_rgw_compatibility: "False"
+
+ceph_cinder_pool_name: "volumes"
+ceph_cinder_backup_pool_name: "backups"
+ceph_glance_pool_name: "images"
+ceph_gnocchi_pool_name: "gnocchi"
+ceph_nova_pool_name: "vms"
+
+ceph_erasure_profile: "k=4 m=2 ruleset-failure-domain=host"
+ceph_rule: "default host {{ 'indep' if ceph_pool_type == 'erasure' else 'firstn' }}"
+ceph_cache_rule: "cache host firstn"
+
+# Set the pgs and pgps for pool
+# WARNING! These values are dependant on the size and shape of your cluster -
+# the default values are not suitable for production use. Please refer to the
+# Kolla Ceph documentation for more information.
+ceph_pool_pg_num: 8
+ceph_pool_pgp_num: 8
+
+# Set the store type for ceph OSD
+# Valid options are [ filestore, bluestore]
+ceph_osd_store_type: "bluestore"
+
+# Set the host type for ceph daemons
+# Valid options are [ IP, HOSTNAME, FQDN, INVENTORY ]
+# Note: For existing clusters, please don't modify this parameter. Otherwise,
+# the existing mon will be invalidated, and the existing osd crush map will
+# be changed.
+ceph_mon_host_type: "IP"
+ceph_mgr_host_type: "INVENTORY"
+ceph_osd_host_type: "IP"
+ceph_mds_host_type: "INVENTORY"
+
+#####################
+# VMware support
+######################
+vmware_vcenter_host_ip: "127.0.0.1"
+vmware_vcenter_host_username: "username"
+vmware_vcenter_cluster_name: "cluster-1"
+vmware_vcenter_insecure: "True"
+
+######################
+# OpenDaylight
+######################
+opendaylight_mechanism_driver: "opendaylight_v2"
+opendaylight_l3_service_plugin: "odl-router_v2"
+opendaylight_acl_impl: "learn"
+enable_opendaylight_qos: "no"
+enable_opendaylight_l3: "{{ enable_opendaylight }}"
+enable_opendaylight_legacy_netvirt_conntrack: "no"
+opendaylight_port_binding_type: "pseudo-agentdb-binding"
+opendaylight_features: "odl-mdsal-apidocs,odl-netvirt-openstack"
+opendaylight_allowed_network_types: '"flat", "vlan", "vxlan"'
+
+#######################################
+# XenAPI - Support XenAPI for XenServer
+#######################################
+# XenAPI driver use HIMN(Host Internal Management Network)
+# to communicate with XenServer host.
+xenserver_himn_ip: "169.254.0.1"
+xenserver_username: "root"
+xenserver_connect_protocol: "https"
+# File used to save XenAPI's facts variables formatted as json.
+xenapi_facts_root: "/etc/kolla/xenapi/"
+xenapi_facts_file: "facts.json"
+
+#############################################
+# MariaDB component-specific database details
+#############################################
+# Whether to configure haproxy to load balance
+# the external MariaDB server(s)
+enable_external_mariadb_load_balancer: "no"
+# Whether to use pre-configured databases / users
+use_preconfigured_databases: "no"
+# whether to use a common, preconfigured user
+# for all component databases
+use_common_mariadb_user: "no"
+
+############
+# Prometheus
+############
+enable_prometheus_haproxy_exporter: "{{ enable_haproxy | bool }}"
+enable_prometheus_mysqld_exporter: "{{ enable_mariadb | bool }}"
+enable_prometheus_node_exporter: "{{ enable_prometheus | bool }}"
+enable_prometheus_memcached_exporter: "{{ enable_memcached | bool }}"
+enable_prometheus_cadvisor: "{{ enable_prometheus | bool }}"
+enable_prometheus_alertmanager: "{{ enable_prometheus | bool }}"
+enable_prometheus_ceph_mgr_exporter: "{{ enable_ceph | bool and enable_prometheus | bool }}"
+enable_prometheus_openstack_exporter: "{{ enable_prometheus | bool }}"
+enable_prometheus_elasticsearch_exporter: "{{ enable_prometheus | bool and enable_elasticsearch | bool }}"
+
+prometheus_alertmanager_user: "admin"
+prometheus_openstack_exporter_interval: "60s"
+prometheus_elasticsearch_exporter_interval: "60s"
+
+############
+# Vitrage
+############
+enable_vitrage_prometheus_datasource: "{{ enable_prometheus | bool }}"
+
+####################
+# InfluxDB options
+####################
+influxdb_address: "{{ kolla_internal_fqdn }}"
+
+#########################
+# Internal Image options
+#########################
+distro_python_version_map: {
+  "centos": "2.7",
+  "debian": "3.7",
+  "oraclelinux": "2.7",
+  "rhel": "2.7",
+  "ubuntu": "3.6"
+}
+
+distro_python_version: "{{ distro_python_version_map[kolla_base_distro] }}"
+
+##########
+# Telegraf
+##########
+# Configure telegraf to use the docker daemon itself as an input for
+# telemetry data.
+telegraf_enable_docker_input: "no"
