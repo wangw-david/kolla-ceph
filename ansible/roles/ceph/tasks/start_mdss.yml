@@ -46,7 +46,7 @@
     volumes:
       - "{{ node_config_directory }}/ceph-mds/:{{ container_config_directory }}/:ro"
       - "/etc/localtime:/etc/localtime:ro"
-      - "kolla_logs:/var/log/kolla/"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
 
 - name: Checking whether cephfs is created
   become: true

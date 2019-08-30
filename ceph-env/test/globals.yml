@@ -1,0 +1,21 @@
+---
+####################
+# Docker options
+####################
+### Example: Private repository with authentication
+
+docker_registry: "192.168.10.11:4000"
+docker_namespace: "kolla-ceph"
+
+# Valid options are [ never, on-failure, always, unless-stopped ]
+docker_restart_policy: "always"
+docker_registry_username: ""
+
+###################
+# Ceph options
+###################
+ceph_pool_pg_num: 32
+ceph_pool_pgp_num: 32
+
+osd_initial_weight: "auto"
+ceph_cluster_fsid: "4a9e463a-4853-4237-a5c5-9ae9d25bacda"

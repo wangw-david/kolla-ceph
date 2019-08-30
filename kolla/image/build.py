@@ -82,116 +82,6 @@ STATUS_ERRORS = (STATUS_CONNECTION_ERROR, STATUS_PUSH_ERROR,
 # and can be omitted along with the + separator which means that component
 # is irrelevant. Otherwise all must match for skip to happen.
 UNBUILDABLE_IMAGES = {
-    'aarch64': {
-        "cyborg-base",       # no binary package
-        "kibana",            # no binary package
-        "monasca-grafana",   # no phantomJS on aarch64
-        "opendaylight",      # no binary package
-        "prometheus-mtail",  # no aarch64 binary
-        "telegraf",          # no binary package
-        "xtrabackup",        # no binary package
-    },
-
-    'source': {
-        "tripleoclient",
-    },
-    'binary': {
-        "almanach-base",
-        "bifrost-base",
-        "blazar-base",
-        "cyborg-base",
-        "dragonflow-base",
-        "freezer-base",
-        "karbor-base",
-        "kuryr-base",
-        "masakari-base",
-        "monasca-base",
-        "monasca-thresh",
-        "nova-mksproxy",
-        "qinling-base",
-        "searchlight-base",
-        "solum-base",
-        "vmtp",
-        "zun-base",
-    },
-
-    'source+aarch64': {
-        "monasca-base",  # pypi 'confluent-kafka' requires newer libfdkafka-dev
-                         # than distributions have
-        "tempest",       # no binary package
-    },
-
-    'centos': {
-        "ovsdpdk",
-    },
-    'oraclelinux': {
-        "ovsdpdk",
-    },
-    'debian': {
-        "bifrost-base",  # tries to install 'mysql-server' which is not in
-                         # Debian 'buster'
-        "cyborg-base",
-        "monasca-grafana",  # FIXME(hrw): some ssl issues to fix
-        "mongodb",
-        "opendaylight",  # no binary package
-        "ovsdpdk",
-        "qdrouterd",
-        "sensu-base",
-        "telegraf",      # no binary package
-        "xtrabackup",    # no binary package
-    },
-    'ubuntu': {
-        "cyborg-base",
-        "qdrouterd",  # There is no qdrouterd package for ubuntu bionic
-    },
-
-    'debian+aarch64': {
-        "skydive-base",  # no binary package
-    },
-    'ubuntu+aarch64': {
-        "sensu-base",    # no binary package
-        "skydive-base",  # no binary package
-    },
-
-    'centos+aarch64': {
-        "elasticsearch",  # no binary package
-        "influxdb",       # no binary package
-        "mongodb",        # no binary package
-    },
-
-    'debian+binary': {
-        "cloudkitty-base",
-        "congress-base",
-        "ec2-api",
-        "heat-all",
-        "ironic-neutron-agent",
-        "mistral-event-engine",
-        "novajoin-base",
-        "octavia-base",
-        "tacker-base",
-        "tripleoclient",
-        "vitrage-base",
-        "zaqar",
-    },
-
-    'oraclelinux+source': {
-        "bifrost-base",
-    },
-
-    'ubuntu+binary': {
-        "cloudkitty-base",
-        "congress-base",
-        "ec2-api",
-        "heat-all",
-        "ironic-neutron-agent",
-        "mistral-event-engine",
-        "novajoin-base",
-        "octavia-base",
-        "tacker-base",
-        "tripleoclient",
-        "vitrage-base",
-        "zaqar",
-    },
 }
 
 
@@ -668,6 +558,7 @@ class KollaWorker(object):
         self.base_tag = conf.base_tag
         self.install_type = conf.install_type
         self.tag = conf.tag
+        self.ceph_version = conf.ceph_version
         self.base_arch = conf.base_arch
         self.debian_arch = self.base_arch
         if self.base_arch == 'aarch64':
@@ -677,7 +568,6 @@ class KollaWorker(object):
         elif self.base_arch == 'ppc64le':
             self.debian_arch = 'ppc64el'
         self.images = list()
-        self.openstack_release = conf.openstack_release
         rpm_setup_config = ([repo_file for repo_file in
                              conf.rpm_setup_config if repo_file is not None])
         self.rpm_setup = self.build_rpm_setup(rpm_setup_config)
@@ -924,7 +814,7 @@ class KollaWorker(object):
                       'image_prefix': self.image_prefix,
                       'install_type': self.install_type,
                       'namespace': self.namespace,
-                      'openstack_release': self.openstack_release,
+                      'ceph_version': self.ceph_version,
                       'tag': self.tag,
                       'maintainer': self.maintainer,
                       'kolla_version': kolla_version,

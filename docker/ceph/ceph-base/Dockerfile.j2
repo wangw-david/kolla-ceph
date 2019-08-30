@@ -28,25 +28,6 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
         ] %}
     {% endif %}
 
-{% elif base_package_type == 'deb' %}
-
-   {% set ceph_base_packages = [
-        'btrfs-progs',
-        'ceph',
-        'ceph-mds',
-        'e2fsprogs',
-        'hdparm',
-        'parted',
-        'radosgw',
-        'xfsprogs'
-    ] %}
-
-    {% if base_arch in ['x86_64'] %}
-        {% set ceph_base_packages = ceph_base_packages + [
-            'ceph-fuse'
-        ] %}
-    {% endif %}
-
 {% endif %}
 {{ macros.install_packages(ceph_base_packages | customizable("packages")) }}
 

@@ -1,0 +1,15 @@
+[Ceph]
+name=Ceph packages for $basearch
+baseurl=https://download.ceph.com/rpm-nautilus/el7/$basearch
+enabled=1
+gpgcheck=1
+type=rpm-md
+gpgkey=https://download.ceph.com/keys/release.asc
+
+[Ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-nautilus/el7/noarch/
+enabled=1
+gpgcheck=1
+type=rpm-md
+gpgkey=https://download.ceph.com/keys/release.asc

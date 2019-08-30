@@ -1,7 +1,7 @@
-"/var/log/kolla/ceph/*.log"
+"/var/log/kolla-ceph/ceph/*.log"
 {
     create 644 root root
     postrotate
-        chmod 644 /var/log/kolla/ceph/*.log
+        chmod 644 /var/log/kolla-ceph/ceph/*.log
     endscript
 }

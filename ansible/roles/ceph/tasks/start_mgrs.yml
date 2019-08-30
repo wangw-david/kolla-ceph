@@ -26,7 +26,7 @@
     volumes:
       - "{{ node_config_directory }}/ceph-mgr/:{{ container_config_directory }}/:ro"
       - "/etc/localtime:/etc/localtime:ro"
-      - "kolla_logs:/var/log/kolla"
+      - "kolla_ceph_logs:/var/log/kolla-ceph"
 
 - name: Enable the ceph mgr prometheus module
   become: true

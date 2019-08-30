@@ -1,0 +1,9 @@
+This project is a complete and improved deployment of ceph with
+the kolla project.
+
+Part of the container build code comes from the openstack kolla
+project (https://github.com/openstack/kolla).
+
+Part of the ansible deployment code comes from openstack
+kolla-ansible project
+(https://github.com/openstack/kolla-ansible).

@@ -53,9 +53,3 @@
   when:
     - enable_ceph_mds | bool
     - inventory_hostname in groups['ceph-mds']
-
-# NOTE(yoctozepto): nfs (cephfs-based) depends on mds so start it after
-- include_tasks: start_nfss.yml
-  when:
-    - enable_ceph_nfs | bool
-    - inventory_hostname in groups['ceph-nfs']

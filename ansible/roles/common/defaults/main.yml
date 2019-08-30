@@ -34,22 +34,11 @@ common_services:
     volumes: "{{ cron_default_volumes + cron_extra_volumes }}"
     dimensions: "{{ cron_dimensions }}"
 
-#######################
-# TLS and authenication
-#######################
-
-fluentd_elasticsearch_path: ""
-fluentd_elasticsearch_scheme: "http"
-fluentd_elasticsearch_user: ""
-fluentd_elasticsearch_password: ""
-fluentd_elasticsearch_ssl_version: "TLSv1_2"
-fluentd_elasticsearch_ssl_verify: "true"
-
 ####################
 # Docker
 ####################
 common_install_type: "{{ kolla_install_type }}"
-common_tag: "{{ openstack_release }}"
+common_tag: "{{ ceph_release }}"
 
 cron_dimensions: "{{ default_container_dimensions }}"
 kolla_toolbox_dimensions: "{{ default_container_dimensions }}"
@@ -75,15 +64,15 @@ kolla_toolbox_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "/dev/:/dev/"
   - "/run/:/run/:shared"
-  - "kolla_logs:/var/log/kolla/"
+  - "kolla_ceph_logs:/var/log/kolla-ceph/"
 cron_default_volumes:
   - "{{ node_config_directory }}/cron/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
-  - "kolla_logs:/var/log/kolla/"
+  - "kolla_ceph_logs:/var/log/kolla-ceph/"
 fluentd_default_volumes:
   - "{{ node_config_directory }}/fluentd/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
-  - "kolla_logs:/var/log/kolla/"
+  - "kolla_ceph_logs:/var/log/kolla-ceph/"
 kolla_toolbox_extra_volumes: "{{ default_extra_volumes }}"
 cron_extra_volumes: "{{ default_extra_volumes }}"
 fluentd_extra_volumes: "{{ default_extra_volumes }}"

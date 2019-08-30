@@ -1,0 +1,41 @@
+# api_interface: NIC used by other services
+# storage_interface: NIC used by ceph public_network
+# cluster_interface: NIC used by ceph cluster_network
+[mons]
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+ceph-node2 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+ceph-node3 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+
+[osds]
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+ceph-node2 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+ceph-node3 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+
+[rgws]
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+
+[mgrs]
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+
+[mdss]
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+
+[nfss]
+
+[ceph-mon:children]
+mons
+
+[ceph-rgw:children]
+rgws
+
+[ceph-osd:children]
+osds
+
+[ceph-mgr:children]
+mgrs
+
+[ceph-mds:children]
+mdss
+
+[ceph-nfs:children]
+nfss

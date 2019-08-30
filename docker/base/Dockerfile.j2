@@ -10,7 +10,7 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
         {%- if not loop.last %} \{% endif -%}
 {%- endfor %}
 
-LABEL kolla_version="{{ kolla_version }}"
+LABEL ceph_version="{{ ceph_version }}"
 
 {% import "macros.j2" as macros with context %}
 {% block base_header %}{% endblock %}
@@ -41,24 +41,11 @@ RUN CURRENT_DISTRO_RELEASE=$(awk '{match($0, /[0-9]+/,version)}END{print version
         echo "Only release '{{ supported_distro_release }}' is supported on {{ base_distro }}"; false; \
     fi \
     && cat /tmp/kolla_bashrc >> /etc/bashrc \
-    && sed -i 's|^\(override_install_langs=.*\)|# \1|' {% if distro_package_manager == 'dnf' %}/etc/dnf/dnf.conf{% else %}/etc/yum.conf{% endif %}
+    && sed -i 's|^\(override_install_langs=.*\)|# \1|' /etc/yum.conf
 
 {% block base_yum_conf %}
 
-{% if base_distro in ['oraclelinux'] %}
-{% set centos_contentdir = 'centos' %}
-
-{% if base_arch in ['aarch64', 'ppc64le'] %}
-    {% set centos_contentdir = 'altarch' %}
-{% endif %}
-RUN echo {{ centos_contentdir }} >> /etc/yum/vars/contentdir
-{% endif %}
-
-{% if distro_package_manager == 'dnf' %}
-COPY dnf.conf /etc/dnf/dnf.conf
-{% else %}
 COPY yum.conf /etc/yum.conf
-{% endif %}
 
 {% endblock %}
 
@@ -73,39 +60,15 @@ COPY yum.conf /etc/yum.conf
 {% set base_yum_repo_keys = [
 ] %}
 
-{% if base_arch == 'x86_64' %}
-    {% set base_yum_repo_files = [
-        'crmsh.repo',
-        'elasticsearch.repo',
-        'grafana.repo',
-        'influxdb.repo',
-        'opendaylight.repo',
-        'percona-release.repo',
-        'rabbitmq_rabbitmq-server.repo',
-        'td.repo'
-    ] %}
+{% set base_yum_repo_files = [
+    'ceph.repo',
+    'td.repo'
+] %}
 
-    ## NOTE(yoctozepto): Percona keys omitted on purpose (handled via the repo file for compatibility with Zuul)
-    {% set base_yum_repo_keys = [
-        'https://artifacts.elastic.co/GPG-KEY-elasticsearch',
-        'https://packages.grafana.com/gpg.key',
-        'https://repos.influxdata.com/influxdb.key',
-        'https://packagecloud.io/gpg.key',
-        'https://packages.treasuredata.com/GPG-KEY-td-agent'
-    ] %}
-{% elif base_arch == 'aarch64' %}
-    {% set base_yum_repo_files = [
-        'elasticsearch.repo',
-        'grafana.repo',
-        'rabbitmq_rabbitmq-server.repo'
-    ] %}
-
-    {% set base_yum_repo_keys = [
-        'https://artifacts.elastic.co/GPG-KEY-elasticsearch',
-        'https://packages.grafana.com/gpg.key',
-        'https://packagecloud.io/gpg.key',
-    ] %}
-{% endif %}
+{% set base_yum_repo_keys = [
+    'https://download.ceph.com/keys/release.asc',
+    'https://packages.treasuredata.com/GPG-KEY-td-agent'
+] %}
 
 {%- for repo_file in base_yum_repo_files | customizable('yum_repo_files') %}
 COPY {{ repo_file }} /etc/yum.repos.d/{{ repo_file }}
@@ -119,25 +82,6 @@ COPY {{ repo_file }} /etc/yum.repos.d/{{ repo_file }}
 {%- if not loop.last %} \{% endif %}
 {% endfor -%}
 
-    {% if install_metatype in ['rdo', 'mixed'] %}
-
-{% for cmd in rpm_setup %}
-{{ cmd }}
-{% endfor %}
-
-    {% endif %}
-    {# endif for repo setup for all RHEL except RHEL OSP #}
-
-    {% if install_metatype == 'rhos' %}
-
-{% block base_rhos_repo_enablement %}
-# Turn on the RHOS 7.0 repo for RHOS
-RUN yum-config-manager --enable rhel-7-server-rpms \
-    && yum-config-manager --enable rhel-7-server-openstack-7.0-rpms
-{% endblock %}
-
-    {% endif %}
-
     {% if base_distro == 'centos' %}
 
 {% block base_centos_gpg_key_import %}
@@ -145,15 +89,11 @@ RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 {% endblock %}
 
 {% set base_centos_yum_repo_keys = [
-    '/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-OpsTools',
-    '/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Storage',
-    '/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Virtualization'
+    '/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-OpsTools'
 ] %}
 
 {% set base_centos_yum_repo_packages = [
-    'centos-release-ceph-nautilus',
     'centos-release-opstools',
-    'centos-release-qemu-ev',
     'epel-release',
     'yum-plugin-priorities'
 ] %}
@@ -172,52 +112,6 @@ RUN {{ macros.install_packages(base_centos_yum_repo_packages | customizable("cen
 
     {%- endif %}
     {# Endif for base_distro centos #}
-
-    {% if base_distro == 'rhel' %}
-
-{% block base_rhel_package_installation %}
-# Enable couple required repositories for all RHEL builds
-# Turn on EPEL throughout the build
-RUN yum-config-manager --enable rhel-7-server-optional-rpms \
-    && {{ macros.install_packages( ['yum-plugin-priorities' ], chain=True, clean=False) }} \
-    {%- if install_type != 'binary' or install_metatype != 'rdo' %}
-    && {{ macros.install_packages( [ 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm' ], chain=True, clean=False) }} \
-    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7 \
-    {% endif -%}
-    && yum-config-manager --enable rhel-7-server-extras-rpms \
-    && yum-config-manager --enable rhel-7-server-rhceph-2-osd-rpms \
-    && yum-config-manager --enable rhel-7-server-rhceph-2-mon-rpms \
-    && yum-config-manager --enable rhel-7-server-rhceph-2-tools-rpms \
-    && {{ macros.rpm_security_update(clean_package_cache) }}
-{% endblock %}
-
-    {% endif %}
-    {# Endif for base_distro RHEL #}
-
-    {% if base_distro == 'oraclelinux' %}
-
-{% block base_oraclelinux_package_installation %}
-COPY oraclelinux-extras.repo /etc/yum.repos.d/oraclelinux-extras.repo
-RUN {{ macros.install_packages( ['tar', 'yum-utils', 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm' ], chain=True, clean=False) }} \
-    && rpm -Uvh --nodeps \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-nfs-ganesha28-1.0-2.el7.centos.noarch.rpm \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-ceph-nautilus-1.2-2.el7.centos.noarch.rpm \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-opstools-1-8.el7.noarch.rpm \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-qemu-ev-1.0-3.el7.centos.noarch.rpm \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-virt-common-1-1.el7.centos.noarch.rpm \
-        http://mirror.centos.org/centos-7/7/extras/x86_64/Packages/centos-release-storage-common-2-2.el7.centos.noarch.rpm \
-    && sed -i 's/\$releasever/7/g' /etc/yum.repos.d/CentOS-*.repo \
-    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7 \
-    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-OpsTools \
-    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Storage \
-    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Virtualization \
-    && yum-config-manager --enable ol7_optional_latest ol7_addons \
-    && {{ macros.install_packages( ['yum-plugin-priorities' ], chain=True, clean=False) }} \
-    && {{ macros.rpm_security_update(clean_package_cache) }}
-{% endblock %}
-
-    {% endif %}
-    {# Endif for base_distro oraclelinux #}
 
 #### END REPO ENABLEMENT
 
@@ -279,146 +173,9 @@ RUN {{ macros.install_packages( ['tar', 'yum-utils', 'https://dl.fedoraproject.o
     {% endif %}
     {# endif for install type is source for RPM based distros #}
 {# endif for base_package_type rpm #}
-{% elif base_package_type == 'deb' %}
-
-RUN if [ $(awk -F '=' '/DISTRIB_RELEASE/{print $2}' /etc/lsb-release) != "{{ supported_distro_release }}" ]; then \
-        echo "Only release '{{ supported_distro_release }}' is supported on {{ base_distro }}"; false; fi
-
-# Customize PS1 bash shell
-RUN cat /tmp/kolla_bashrc >> /etc/bash.bashrc
-
-# This will prevent questions from being asked during the install
-ENV DEBIAN_FRONTEND noninteractive
-
-# Reducing disk footprint
-COPY dpkg_reducing_disk_footprint /etc/dpkg/dpkg.cfg.d/dpkg_reducing_disk_footprint
-
-{% block base_ubuntu_package_pre %}
-# Need apt-transport-https and ca-certificates before replacing sources.list or
-# apt-get update will not work if any repositories are accessed via HTTPS
-{% set base_ubuntu_package_pre_packages = [
-    'apt-transport-https',
-    'ca-certificates',
-    'curl',
-    'dirmngr',
-    'gnupg'
-] %}
-{{ macros.install_packages(base_ubuntu_package_pre_packages | customizable("base_ubuntu_package_pre_packages")) }}
-{% endblock %}
-
-{% block base_ubuntu_package_sources_list %}
-{% if base_distro == 'debian' or ( base_distro == 'ubuntu' and base_arch == 'x86_64' ) %}
-COPY sources.list.{{ base_distro }} /etc/apt/sources.list
-{% else %}
-COPY sources.list.{{ base_distro }}.{{ base_arch }} /etc/apt/sources.list
-{% endif %}
-{% endblock %}
-
-{% block base_ubuntu_package_apt_preferences %}
-COPY apt_preferences.{{ base_distro }} /etc/apt/preferences
-{% endblock %}
-
-{% set base_apt_packages = [
-   'apt-utils',
-   'curl',
-   'gawk',
-   'iproute2',
-   'kmod',
-   'lvm2',
-   'netbase',
-   'open-iscsi',
-   'procps',
-   'python3',
-   'socat',
-   'sudo',
-   'tgt']
-%}
-
-{% set base_compiler_packages = [
-    'build-essential'
-] %}
-
-{% if base_distro == 'ubuntu' %}
-    {# 391A9AA2147192839E9DB0315EDB1B62EC4926EA -- Canonical Cloud Archive Signing Key <ftpmaster@canonical.com> #}
-    {# 46095ACC8548582C1A2699A9D27D666CD88E42B4 -- Elasticsearch (Elasticsearch Signing Key) <dev_ops@elasticsearch.org> #}
-    {# 49B07274951063870A8B7EAE7B8AA1A344C05248 -- Opendaylight Signing Key <https://launchpad.net/~odl-team> #}
-    {# 4D1BB29D63D98E422B2113B19334A25F8507EFA5 -- Percona MySQL Development Team (Packaging key) <mysql-dev@percona.com> #}
-    {# 58118E89F3A912897C070ADBF76221572C52609D -- Docker Release Tool (releasedocker) <docker@docker.com> #}
-    {# 4D8EB5FDA37AB55F41A135203BF88A0C6A770882 -- Apache Qpid PPA Signing Key <dev@qpid.apache.org> #}
-    {# 901F9177AB97ACBE                         -- Treasure Data, Inc (Treasure Agent Official Signing key) <support@treasure-data.com> #}
-    {# A20F259AEB9C94BB                         -- Sensuapp (Freight) <support@hw-ops.com> #}
-    {% set base_apt_keys = [
-      '391A9AA2147192839E9DB0315EDB1B62EC4926EA',
-      '46095ACC8548582C1A2699A9D27D666CD88E42B4',
-      '49B07274951063870A8B7EAE7B8AA1A344C05248',
-      '4D1BB29D63D98E422B2113B19334A25F8507EFA5',
-      '58118E89F3A912897C070ADBF76221572C52609D',
-      '4D8EB5FDA37AB55F41A135203BF88A0C6A770882',
-      '901F9177AB97ACBE',
-      'A20F259AEB9C94BB'
-    ] %}
-    {% set remote_apt_keys = [
-      'https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey',
-      'https://packages.grafana.com/gpg.key',
-      'https://repos.influxdata.com/influxdb.key'
-    ] %}
-{% elif base_distro == 'debian' %}
-    {% set base_apt_keys = [
-      '46095ACC8548582C1A2699A9D27D666CD88E42B4',
-      '4D1BB29D63D98E422B2113B19334A25F8507EFA5',
-    ] %}
-    {% set remote_apt_keys = [
-      'http://obs.linaro.org/ERP:/18.06/Debian_9/Release.key',
-      'https://download.docker.com/linux/debian/gpg',
-      'https://packages.grafana.com/gpg.key'
-    ] %}
-    {% set base_apt_packages = base_apt_packages +
-      ['sudo',]
-    %}
 {% endif %}
 
-{% block base_ubuntu_package_installation %}
-    {%- block base_ubuntu_package_key_installation %}
-        {% for key in base_apt_keys | customizable('apt_keys') %}
-            {%- if loop.first %}RUN {% else %} && {% endif %}apt-key adv --no-tty --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 {{ key }}
-            {%- if not loop.last %} \
-            {% endif -%}
-        {% endfor %}
-        {% for key in remote_apt_keys | customizable('remote_apt_keys') %}
-            {%- if loop.first %} RUN {% else %} && {% endif %}curl -L {{ key }} | apt-key add -
-            {%- if not loop.last %} \
-            {% endif -%}
-        {% endfor %}
-    {% endblock %}
-RUN apt-get update \
-    && apt-get -y upgrade \
-    && apt-get -y dist-upgrade \
-    && apt-get -y install --no-install-recommends \
-    {%- for package in base_apt_packages | customizable('apt_packages') %}
-        {{ package }} \
-    {%- endfor %}
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-{% endblock %}
-
-# FIXME(mgoddard): Some images, including Horizon, depend on Ubuntu having a
-# site-packages directory.
-#{% if base_distro == 'ubuntu' %}
-#RUN sed -i \
-#        -e "s|\('purelib': '\$base/\)local/\(lib/python\$py_version_short/dist-packages',\)|\1\2|" \
-#        -e "s|\('platlib': '\$platbase/\)local/\(lib/python\$py_version_short/dist-packages',\)|\1\2|" \
-#        -e "s|\('headers': '\$base/\)local/\(include/python\$py_version_short/\$dist_name',\)|\1\2|" \
-#        -e "s|\('scripts': '\$base/\)local/\(bin',\)|\1\2|" \
-#        -e "s|\('data'   : '\$base\)/local\(',\)|\1\2|" \
-#        /usr/lib/python{{ distro_python_version }}/distutils/command/install.py \
-#    && rm -rf /usr/lib/python{{ distro_python_version }}/site-packages \
-#    && ln -s dist-packages /usr/lib/{{ distro_python_version }}/site-packages
-#{% endif %}
-
-{# endif base_package_type deb #}
-{% endif %}
-
-{% if base_distro == 'centos' or base_distro == 'rhel' %}
+{% if base_distro == 'centos' %}
 RUN sed -ri '/-session(\s+)optional(\s+)pam_systemd.so/d' /etc/pam.d/system-auth
 {% endif %}
 
@@ -462,9 +219,9 @@ ENTRYPOINT ["dumb-init", "--single-child", "--"]
 RUN touch /usr/local/bin/kolla_extend_start \
     && chmod 755 /usr/local/bin/kolla_start /usr/local/bin/kolla_extend_start /usr/local/bin/kolla_set_configs \
     && chmod 440 /etc/sudoers \
-    && mkdir -p /var/log/kolla \
-    && chown :kolla /var/log/kolla \
-    && chmod 2775 /var/log/kolla \
+    && mkdir -p /var/log/kolla-ceph \
+    && chown :kolla /var/log/kolla-ceph \
+    && chmod 2775 /var/log/kolla-ceph \
     && rm -f /tmp/kolla_bashrc
 
 {% block base_footer %}{% endblock %}

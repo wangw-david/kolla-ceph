@@ -61,14 +61,6 @@
   with_items:
     - "00-global"
     - "01-syslog"
-    - "02-mariadb"
-    - "03-rabbitmq"
-    - "04-openstack-wsgi"
-    - "05-libvirt"
-    - "06-zookeeper"
-    - "07-kafka"
-    - "08-opendaylight"
-    - "09-monasca"
   notify:
     - Restart fluentd container
 
@@ -83,12 +75,6 @@
   notify:
     - Restart fluentd container
 
-- name: Determine whether logs should be forwarded directly to Elasticsearch
-  set_fact:
-    log_direct_to_elasticsearch: "{{ ( enable_elasticsearch | bool or
-                ( elasticsearch_address != kolla_internal_vip_address )) and
-                not enable_monasca | bool }}"
-
 - name: Find custom fluentd output config files
   local_action:
     module: find
@@ -98,56 +84,6 @@
   register: find_custom_fluentd_outputs
   when:
     - enable_fluentd | bool
-
-- name: Copying over fluentd output config files
-  vars:
-    customised_output_files: "{{ find_custom_fluentd_outputs.files | map(attribute='path') | map('basename') | list }}"
-  template:
-    src: "conf/output/{{ item.name }}.conf.j2"
-    dest: "{{ node_config_directory }}/fluentd/output/{{ item.name }}.conf"
-    mode: "0660"
-  become: true
-  when:
-    - enable_fluentd | bool
-    - item.enabled | bool
-    - item.name ~ '.conf' not in customised_output_files
-  with_items:
-    - name: "00-local"
-      enabled: true
-    - name: "01-es"
-      enabled: "{{ log_direct_to_elasticsearch }}"
-    - name: "02-monasca"
-      enabled: "{{ enable_monasca | bool }}"
-  notify:
-    - Restart fluentd container
-
-- name: Removing stale output config files
-  file:
-    path: "{{ node_config_directory }}/fluentd/output/{{ item.name }}.conf"
-    state: "absent"
-  become: true
-  when:
-    - enable_fluentd | bool
-    - item.disable | bool
-  with_items:
-    - name: "02-monasca"
-      disable: "{{ not enable_monasca | bool }}"
-    - name: "01-es"
-      disable: "{{ not log_direct_to_elasticsearch }}"
-  notify:
-    - Restart fluentd container
-
-- name: Copying over custom fluentd output config files
-  template:
-    src: "{{ item.path }}"
-    dest: "{{ node_config_directory }}/fluentd/output/{{ item.path | basename }}"
-    mode: "0660"
-  become: true
-  when:
-    - enable_fluentd | bool
-  with_items: "{{ find_custom_fluentd_outputs.files }}"
-  notify:
-    - Restart fluentd container
 
 - name: Find custom fluentd format config files
   local_action:
@@ -207,7 +143,7 @@
   with_items:
     - src: 00-record_transformer
       dest: 00-record_transformer
-    - src: "{{ '01-rewrite-0.14' if kolla_base_distro in ['debian', 'ubuntu'] else '01-rewrite-0.12' }}"
+    - src: "{{ '01-rewrite-0.12' }}"
       dest: 01-rewrite
   when:
     - enable_fluentd | bool
@@ -247,69 +183,8 @@
   when: item.enabled | bool
   with_items:
     - { name: "ansible", enabled: "yes" }
-    - { name: "aodh", enabled: "{{ enable_aodh }}" }
-    - { name: "barbican", enabled: "{{ enable_barbican }}" }
-    - { name: "blazar", enabled: "{{ enable_blazar }}" }
-    - { name: "ceilometer", enabled: "{{ enable_ceilometer }}" }
-    - { name: "ceph", enabled: "{{ enable_ceph }}" }
-    - { name: "chrony", enabled: "{{ enable_chrony }}" }
-    - { name: "cinder", enabled: "{{ enable_cinder }}" }
-    - { name: "cloudkitty", enabled: "{{ enable_cloudkitty }}" }
-    - { name: "collectd", enabled: "{{ enable_collectd }}" }
-    - { name: "congress", enabled: "{{ enable_congress }}" }
-    - { name: "cyborg", enabled: "{{ enable_cyborg }}" }
-    - { name: "designate", enabled: "{{ enable_designate }}" }
-    - { name: "elasticsearch", enabled: "{{ enable_elasticsearch }}" }
-    - { name: "etcd", enabled: "{{ enable_etcd }}" }
-    - { name: "freezer", enabled: "{{ enable_freezer }}" }
-    - { name: "glance", enabled: "{{ enable_glance }}" }
+    - { name: "ceph", enabled: "yes" }
     - { name: "global", enabled: "yes" }
-    - { name: "gnocchi", enabled: "{{ enable_gnocchi }}" }
-    - { name: "grafana", enabled: "{{ enable_grafana }}" }
-    - { name: "haproxy", enabled: "{{ enable_haproxy }}" }
-    - { name: "heat", enabled: "{{ enable_heat }}" }
-    - { name: "horizon", enabled: "{{ enable_horizon }}" }
-    - { name: "influxdb", enabled: "{{ enable_influxdb }}" }
-    - { name: "ironic", enabled: "{{ enable_ironic }}" }
-    - { name: "ironic-inspector", enabled: "{{ enable_ironic }}" }
-    - { name: "iscsid", enabled: "{{ enable_iscsid }}" }
-    - { name: "kafka", enabled: "{{ enable_kafka }}" }
-    - { name: "karbor", enabled: "{{ enable_karbor }}" }
-    - { name: "keepalived", enabled: "{{ enable_haproxy }}" }
-    - { name: "keystone", enabled: "{{ enable_keystone }}" }
-    - { name: "kibana", enabled: "{{ enable_kibana }}" }
-    - { name: "kuryr", enabled: "{{ enable_kuryr }}" }
-    - { name: "magnum", enabled: "{{ enable_magnum }}" }
-    - { name: "manila", enabled: "{{ enable_manila }}" }
-    - { name: "mariadb", enabled: "{{ enable_mariadb }}" }
-    - { name: "masakari", enabled: "{{ enable_masakari }}" }
-    - { name: "mistral", enabled: "{{ enable_mistral }}" }
-    - { name: "monasca", enabled: "{{ enable_monasca }}" }
-    - { name: "mongodb", enabled: "{{ enable_mongodb }}" }
-    - { name: "murano", enabled: "{{ enable_murano }}" }
-    - { name: "neutron", enabled: "{{ enable_neutron }}" }
-    - { name: "nova", enabled: "{{ enable_nova }}" }
-    - { name: "octavia", enabled: "{{ enable_octavia }}" }
-    - { name: "opendaylight", enabled: "{{ enable_opendaylight }}" }
-    - { name: "outward-rabbitmq", enabled: "{{ enable_outward_rabbitmq }}" }
-    - { name: "panko", enabled: "{{ enable_panko }}" }
-    - { name: "qinling", enabled: "{{ enable_qinling }}" }
-    - { name: "rabbitmq", enabled: "{{ enable_rabbitmq }}" }
-    - { name: "rally", enabled: "{{ enable_rally }}" }
-    - { name: "sahara", enabled: "{{ enable_sahara }}" }
-    - { name: "searchlight", enabled: "{{ enable_searchlight }}" }
-    - { name: "senlin", enabled: "{{ enable_senlin }}" }
-    - { name: "skydive", enabled: "{{ enable_skydive }}" }
-    - { name: "solum", enabled: "{{ enable_solum }}" }
-    - { name: "storm", enabled: "{{ enable_storm }}" }
-    - { name: "swift", enabled: "{{ enable_swift }}" }
-    - { name: "tacker", enabled: "{{ enable_tacker }}" }
-    - { name: "tempest", enabled: "{{ enable_tempest }}" }
-    - { name: "trove", enabled: "{{ enable_trove }}" }
-    - { name: "vitrage", enabled: "{{ enable_vitrage }}" }
-    - { name: "watcher", enabled: "{{ enable_watcher }}" }
-    - { name: "zookeeper", enabled: "{{ enable_zookeeper }}" }
-    - { name: "zun", enabled: "{{ enable_zun }}" }
   notify:
     - Restart cron container
 
@@ -338,7 +213,7 @@
     privileged: "{{ item.value.privileged | default(False) }}"
     environment: "{{ item.value.environment }}"
   when:
-    - kolla_action != "config"
+    - ceph_action != "config"
     - item.value.enabled | bool
   with_dict: "{{ common_services }}"
   notify:

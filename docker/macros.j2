@@ -5,13 +5,6 @@
         {{ distro_package_manager }} -y install {{ packages | join(' ') }}
         {%- if clean %} \
     && {{ distro_package_manager }} clean all && rm -rf /var/cache/{{ distro_package_manager }}{% endif -%}
-    {%- elif base_package_type == 'deb' -%}
-        {#-
-          debian_package_install is a utility method to build up an appropriate
-          set of commands to install packages in a debian-based environment that
-          may include URL links to a .deb package
-        -#}
-        {{ debian_package_install(packages, clean) }}
     {%- endif %}
 {%- endif %}
 {%- endmacro %}
@@ -72,59 +65,11 @@ RUN usermod --append --home {{ homedir }} --groups kolla {{ name }} \
     && chown -R {{ user.uid }}:{{ user.gid }} {{ homedir }}
 {% endmacro %}
 
-{% macro debian_fix_existing_user(package, lines) %}
-RUN apt-get update \
-    && apt-get -y install --no-install-recommends {{ package }} \
-    || sed -i '/adduser/,+{{ lines }} d' /var/lib/dpkg/info/{{ package }}.postinst \
-    && echo "configuring packages" \
-    && dpkg --configure -a \
-    && echo "done" \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-{% endmacro %}
-
-{% macro debian_haproxy_existing_user_fix() %}
-{# NOTE(SamYaple): The postinst script breaks if the user 'haproxy' already exists #}
-    {{ debian_fix_existing_user('haproxy', 1) }}
-{% endmacro %}
-
-{% macro debian_mongodb_existing_user_fix() %}
-{# NOTE(hrw): The postinst script breaks if the user 'mongodb' already exists #}
-{# TODO(hrw): Version in Debian 'testing' checks does user exists #}
-    {{ debian_fix_existing_user('mongodb-server', 3) }}
-{% endmacro %}
-
-{% macro debian_opendaylight_existing_user_fix() %}
-{# NOTE(egonzalez): The postinst script breaks if the user 'odl' already exists #}
-    {{ debian_fix_existing_user('opendaylight', 1) }}
-{% endmacro %}
-
-{% macro install_kubectl() %}
-    # TODO(mandre) check for file integrity instead of downloading from an HTTPS source
-    RUN curl -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.11.0/bin/linux/{{debian_arch}}/kubectl \
-        && chmod 755 /usr/bin/kubectl
-{% endmacro %}
-
 {% macro install_fluent_plugins(plugins, chain=False) -%}
 {% if plugins is defined and plugins|length > 0 -%}
     {% if not chain -%} RUN {% endif -%}
-    {%- if base_distro in ['centos', 'oraclelinux', 'rhel'] -%}
+    {%- if base_distro in ['centos'] -%}
         ulimit -n 65536 && gem install --minimal-deps {{ plugins | join(' ') }}
-    {%- elif base_distro in ['debian', 'ubuntu'] -%}
-        {%- if base_arch == 'x86_64' and base_distro == 'ubuntu' -%}
-            ulimit -n 65536 && td-agent-gem install {{ plugins | join(' ') }}
-        {%- else -%}
-            ulimit -n 65536 && gem install --minimal-deps {{ plugins | join(' ') }}
-        {%- endif %}
     {%- endif %}
-{%- endif %}
-{%- endmacro %}
-
-{% macro install_rabbitmq_plugins(plugins, version) -%}
-    ENV PLUGINS_DIR /usr/lib/rabbitmq/plugins
-{% if plugins is defined and plugins|length > 0 -%}
-    {% for item in plugins %}
-         RUN curl -L -o ${PLUGINS_DIR}/{{ item }} https://github.com/deadtrickster/prometheus_rabbitmq_exporter/releases/download/{{ version }}/{{ item }}
-    {% endfor %}
 {%- endif %}
 {%- endmacro %}

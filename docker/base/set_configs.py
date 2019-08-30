@@ -275,7 +275,7 @@ def load_config():
     def load_from_file():
         config_file = os.environ.get("KOLLA_CONFIG_FILE")
         if not config_file:
-            config_file = '/var/lib/kolla/config_files/config.json'
+            config_file = '/var/lib/kolla-ceph/config_files/config.json'
         LOG.info("Loading config file at %s", config_file)
 
         # Attempt to read config file

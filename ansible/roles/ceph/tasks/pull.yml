@@ -41,13 +41,3 @@
   when:
     - enable_ceph_mds | bool
     - inventory_hostname in groups['ceph-mds']
-
-- name: Pulling ceph-nfs image
-  become: true
-  kolla_docker:
-    action: "pull_image"
-    common_options: "{{ docker_common_options }}"
-    image: "{{ ceph_nfs_image_full }}"
-  when:
-    - enable_ceph_nfs | bool
-    - inventory_hostname in groups['ceph-nfs']
