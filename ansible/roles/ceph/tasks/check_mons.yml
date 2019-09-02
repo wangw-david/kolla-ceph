@@ -1,0 +1,19 @@
+---
+- name: Running ceph mon check
+  become: true
+  shell: docker exec ceph_mon ceph health --connect-timeout 1
+  delegate_to: "{{ item }}"
+  register: ceph_mon_check
+  changed_when: False
+  failed_when: False
+  with_items: "{{ groups['ceph-mon'] }}"
+  run_once: true
+
+- name: Registering active mon
+  set_fact:
+    active_mon: "{{ item.1 }}"
+  when: item.0.rc is defined and item.0.rc == 0
+  run_once: true
+  with_together:
+    - "{{ ceph_mon_check.results }}"
+    - "{{ groups['ceph-mon'] }}"

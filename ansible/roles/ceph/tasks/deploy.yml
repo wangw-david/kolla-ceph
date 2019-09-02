@@ -3,8 +3,15 @@
 
 - include_tasks: config.yml
 
+- include_tasks: check_mons.yml
+
 - include_tasks: bootstrap_mons.yml
   when: inventory_hostname in groups['ceph-mon']
+
+- name: Registering available mon
+  set_fact:
+    available_mon: "{{ active_mon if active_mon is defined else delegate_host }}"
+  run_once: True
 
 - include_tasks: distribute_keyrings.yml
 
@@ -19,7 +26,7 @@
     name: client.admin
     caps: "{{ ceph_client_admin_keyring_caps }}"
   run_once: True
-  delegate_to: "{{ groups['ceph-mon'][0] }}"
+  delegate_to: "{{ available_mon }}"
   register: result
   until: result is success
   retries: 3
@@ -42,11 +49,6 @@
 - include_tasks: start_rgws.yml
   when:
     - enable_ceph_rgw | bool
-    - inventory_hostname in groups['ceph-rgw']
-
-- include_tasks: start_rgw_keystone.yml
-  when:
-    - enable_ceph_rgw_keystone | bool
     - inventory_hostname in groups['ceph-rgw']
 
 - include_tasks: start_mdss.yml

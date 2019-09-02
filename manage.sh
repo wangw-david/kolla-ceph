@@ -222,7 +222,7 @@ function print_deploy_details() {
     echo    "You have 30s to check, if you want to quit press CTRL + C :"
     echo    "******************************************************************"
     local time=0
-    for (( i=19; i>=0; i=i-1 )); do
+    for (( i=29; i>=0; i=i-1 )); do
         ((time+=1));
         if (( "${i}"%10 == 0 )); then
             echo " . . . . * . . . . $i "

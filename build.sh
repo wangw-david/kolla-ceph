@@ -82,7 +82,7 @@ fi
 # build
 ##############################
 
-CMD="python kolla/cmd/build.py --config-file ${BUILD_CONFIG} --push  --tag ${CEPH_TAG} --type source"
+CMD="python kolla/cmd/build.py --config-file ${BUILD_CONFIG} --push  --tag ${CEPH_TAG}"
 echo "$CMD"
 
 BUILD_LOG_NAME="${BUILD_LOG_PATH}/build-${CEPH_TAG}.log"

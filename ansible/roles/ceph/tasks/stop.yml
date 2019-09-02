@@ -7,7 +7,6 @@
     name: "ceph_mon"
   when:
     - inventory_hostname in groups['ceph-mon']
-    - "'ceph_mon' not in skip_stop_containers"
 
 - name: Find running ceph-osds containers
   become: true
@@ -24,7 +23,6 @@
   when:
     - inventory_hostname in groups['ceph-osd']
     - ceph_osd_containers.stdout_lines | length >= 1
-    - item not in skip_stop_containers
 
 - name: Stopping ceph-rgw container
   become: true
@@ -35,7 +33,6 @@
   when:
     - inventory_hostname in groups['ceph-rgw']
     - enable_ceph_rgw | bool
-    - "'ceph_rgw' not in skip_stop_containers"
 
 - name: Stopping ceph-mgr container
   become: true
@@ -45,7 +42,6 @@
     name: "ceph_mgr"
   when:
     - inventory_hostname in groups['ceph-mgr']
-    - "'ceph_mgr' not in skip_stop_containers"
 
 - name: Stopping ceph-mds container
   become: true
@@ -56,4 +52,3 @@
   when:
     - enable_ceph_mds | bool
     - inventory_hostname in groups['ceph-mds']
-    - "'ceph_mds' not in skip_stop_containers"

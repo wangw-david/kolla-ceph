@@ -5,7 +5,7 @@
   register: ceph_files_json
   changed_when: (ceph_files_json.stdout | from_json).changed
   failed_when: (ceph_files_json.stdout | from_json).failed
-  delegate_to: "{{ delegate_host }}"
+  delegate_to: "{{ available_mon }}"
   run_once: True
 
 - name: Reading json from variable

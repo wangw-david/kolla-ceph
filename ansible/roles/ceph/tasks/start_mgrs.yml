@@ -5,7 +5,7 @@
     name: "mgr.{{ ceph_mgr_hostname }}"
     caps: "{{ ceph_client_mgr_keyring_caps }}"
   register: ceph_mgr_keyring
-  delegate_to: "{{ groups['ceph-mon'][0] }}"
+  delegate_to: "{{ available_mon }}"
 
 - name: Pushing ceph mgr keyring to ceph-mgr
   become: true

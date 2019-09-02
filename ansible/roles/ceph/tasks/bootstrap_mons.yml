@@ -36,4 +36,6 @@
   run_once: True
 
 - include_tasks: generate_cluster.yml
-  when: delegate_host == 'None' and inventory_hostname == groups['ceph-mon'][0]
+  when:
+    - delegate_host == 'None' and inventory_hostname == groups['ceph-mon'][0]
+    - active_mon is not defined

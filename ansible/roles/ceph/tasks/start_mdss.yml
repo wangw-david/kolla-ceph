@@ -25,7 +25,7 @@
     name: "mds.{{ ceph_mds_hostname }}"
     caps: "{{ ceph_client_mds_keyring_caps }}"
   register: ceph_mds_auth
-  delegate_to: "{{ groups['ceph-mon'][0] }}"
+  delegate_to: "{{ available_mon }}"
 
 - name: Pushing ceph mds keyring to ceph-mds
   become: true
