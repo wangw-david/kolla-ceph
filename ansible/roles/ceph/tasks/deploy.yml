@@ -6,7 +6,9 @@
 - include_tasks: check_mons.yml
 
 - include_tasks: bootstrap_mons.yml
-  when: inventory_hostname in groups['ceph-mon']
+  when:
+    - inventory_hostname in groups['ceph-mon']
+    - "'ceph-mon' in ceph_install_daemons"
 
 - name: Registering available mon
   set_fact:
@@ -16,7 +18,9 @@
 - include_tasks: distribute_keyrings.yml
 
 - include_tasks: start_mons.yml
-  when: inventory_hostname in groups['ceph-mon']
+  when:
+    - inventory_hostname in groups['ceph-mon']
+    - "'ceph-mon' in ceph_install_daemons"
 
 # NOTE(yoctozepto): this ensures caps for admin are always up-to-date (run as earliest as possible = after MONs start)
 # this is retried because the cluster might not be fully operational yet (quorum gathering)
@@ -33,25 +37,34 @@
   delay: 15
 
 - include_tasks: start_mgrs.yml
-  when: inventory_hostname in groups['ceph-mgr']
+  when:
+    - inventory_hostname in groups['ceph-mgr']
+    - "'ceph-mgr' in ceph_install_daemons"
 
 - include_tasks: start_ceph_dashboard.yml
   when:
     - enable_ceph_dashboard | bool
     - inventory_hostname in groups['ceph-mon']
+    - "'ceph-mgr' in ceph_install_daemons"
 
 - include_tasks: bootstrap_osds.yml
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - inventory_hostname in groups['ceph-osd']
+    - "'ceph-osd' in ceph_install_daemons"
 
 - include_tasks: start_osds.yml
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - inventory_hostname in groups['ceph-osd']
+    - "'ceph-osd' in ceph_install_daemons"
 
 - include_tasks: start_rgws.yml
   when:
     - enable_ceph_rgw | bool
     - inventory_hostname in groups['ceph-rgw']
+    - "'ceph-rgw' in ceph_install_daemons"
 
 - include_tasks: start_mdss.yml
   when:
     - enable_ceph_mds | bool
     - inventory_hostname in groups['ceph-mds']
+    - "'ceph-mds' in ceph_install_daemons"

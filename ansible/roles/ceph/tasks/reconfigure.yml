@@ -6,7 +6,9 @@
     action: "get_container_state"
   register: ceph_mon_container_state
   failed_when: ceph_mon_container_state.Running == false
-  when: inventory_hostname in groups[item.group]
+  when:
+    - "'ceph-mon' in ceph_install_daemons"
+    - inventory_hostname in groups[item.group]
   with_items:
     - { name: ceph_mon, group: ceph-mon }
 
@@ -18,12 +20,16 @@
   register: osd_lookup
   changed_when: osd_lookup.stdout.find('localhost | SUCCESS => ') != -1 and (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).changed
   failed_when: osd_lookup.stdout.split()[2] != 'SUCCESS'
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - "'ceph-osd' in ceph_install_daemons"
+    - inventory_hostname in groups['ceph-osd']
 
 - name: Reading data from variable
   set_fact:
     osds: "{{ (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).disks|from_json }}"
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - "'ceph-osd' in ceph_install_daemons"
+    - inventory_hostname in groups['ceph-osd']
 
 - name: Gathering OSD IDs
   command: "cat /var/lib/ceph/osd/{{ item['fs_uuid'] }}/whoami"
@@ -31,7 +37,9 @@
   register: osd_ids
   changed_when: False
   failed_when: osd_ids.rc != 0
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - "'ceph-osd' in ceph_install_daemons"
+    - inventory_hostname in groups['ceph-osd']
 
 - name: Ensuring the ceph_osd container is up
   become: true
@@ -40,7 +48,9 @@
     action: "get_container_state"
   register: ceph_osd_container_state
   failed_when: ceph_osd_container_state.Running == false
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - "'ceph-osd' in ceph_install_daemons"
+    - inventory_hostname in groups['ceph-osd']
   with_items: "{{ osd_ids.results|default({}) }}"
 
 - name: Ensuring the ceph_rgw container is up
@@ -51,6 +61,7 @@
   register: ceph_rgw_container_state
   failed_when: ceph_rgw_container_state.Running == false
   when:
+    - "'ceph-rgw' in ceph_install_daemons"
     - enable_ceph_rgw | bool
     - inventory_hostname in groups[item.group]
   with_items:
@@ -64,7 +75,9 @@
   changed_when: false
   failed_when: false
   register: ceph_mon_check_results
-  when: inventory_hostname in groups[item.group]
+  when:
+    - "'ceph-mon' in ceph_install_daemons"
+    - inventory_hostname in groups[item.group]
   with_items:
     - { name: ceph_mon, group: ceph-mon }
 
@@ -75,7 +88,9 @@
   failed_when: false
   register: ceph_osd_check_results
   with_items: "{{ osd_ids.results|default({}) }}"
-  when: inventory_hostname in groups['ceph-osd']
+  when:
+    - "'ceph-osd' in ceph_install_daemons"
+    - inventory_hostname in groups['ceph-osd']
 
 - name: Check the configs in ceph_rgw container
   become: true
@@ -85,6 +100,7 @@
   register: ceph_rgw_check_results
   when:
     - enable_ceph_rgw | bool
+    - "'ceph-rgw' in ceph_install_daemons"
     - inventory_hostname in groups[item.group]
   with_items:
     - { name: ceph_rgw, group: ceph-rgw }
@@ -95,7 +111,9 @@
     name: "{{ item.name }}"
     action: "get_container_env"
   register: ceph_mon_container_envs
-  when: inventory_hostname in groups[item.group]
+  when:
+    - "'ceph-mon' in ceph_install_daemons"
+    - inventory_hostname in groups[item.group]
   with_items:
     - { name: ceph_mon, group: ceph-mon }
 
@@ -108,6 +126,7 @@
   with_items: "{{ osd_ids.results|default({}) }}"
   when:
     - inventory_hostname in groups['ceph-osd']
+    - "'ceph-osd' in ceph_install_daemons"
     - osds
 
 - name: Containers config strategy for ceph_rgw container
@@ -118,6 +137,7 @@
   register: ceph_rgw_container_envs
   when:
     - enable_ceph_rgw | bool
+    - "'ceph-rgw' in ceph_install_daemons"
     - inventory_hostname in groups[item.group]
   with_items:
     - { name: ceph_rgw, group: ceph-rgw }
@@ -129,6 +149,7 @@
     action: "remove_container"
   register: remove_ceph_mon_container
   when:
+    - "'ceph-mon' in ceph_install_daemons"
     - inventory_hostname in groups[item[0]['group']]
     - config_strategy == "COPY_ONCE" or item[1]['KOLLA_CONFIG_STRATEGY'] == 'COPY_ONCE'
     - item[2]['rc'] == 1
@@ -144,6 +165,7 @@
     action: "remove_container"
   register: remove_ceph_osd_containers
   when:
+    - "'ceph-osd' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-osd']
     - config_strategy == "COPY_ONCE" or item[1]['KOLLA_CONFIG_STRATEGY'] == 'COPY_ONCE'
     - item[2]['rc'] == 1
@@ -161,6 +183,7 @@
   register: remove_ceph_rgw_container
   when:
     - enable_ceph_rgw | bool
+    - "'ceph-rgw' in ceph_install_daemons"
     - inventory_hostname in groups[item[0]['group']]
     - config_strategy == "COPY_ONCE" or item[1]['KOLLA_CONFIG_STRATEGY'] == 'COPY_ONCE'
     - item[2]['rc'] == 1
@@ -171,16 +194,19 @@
 
 - include_tasks: start_mons.yml
   when:
+    - "'ceph-mon' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-mon']
     - remove_ceph_mon_container.changed
 
 - include_tasks: start_osds.yml
   when:
+    - "'ceph-mon' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-osd']
     - remove_ceph_osd_containers.changed
 
 - include_tasks: start_rgws.yml
   when:
+    - "'ceph-rgw' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-rgw']
     - remove_ceph_rgw_container.changed
 
@@ -190,6 +216,7 @@
     name: "ceph_mon"
     action: "restart_container"
   when:
+    - "'ceph-mon' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-mon']
     - config_strategy == 'COPY_ALWAYS'
     - item[0]['KOLLA_CONFIG_STRATEGY'] != 'COPY_ONCE'
@@ -204,6 +231,7 @@
     name: "ceph_osd_{{ item.0.stdout }}"
     action: "restart_container"
   when:
+    - "'ceph-osd' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-osd']
     - config_strategy == 'COPY_ALWAYS'
     - item[1]['KOLLA_CONFIG_STRATEGY'] != 'COPY_ONCE'
@@ -221,6 +249,7 @@
     action: "restart_container"
   when:
     - enable_ceph_rgw | bool
+    - "'ceph-rgw' in ceph_install_daemons"
     - inventory_hostname in groups['ceph-rgw']
     - config_strategy == 'COPY_ALWAYS'
     - item[0]['KOLLA_CONFIG_STRATEGY'] != 'COPY_ONCE'
@@ -228,8 +257,3 @@
   with_together:
     - "{{ ceph_rgw_container_envs.results }}"
     - "{{ ceph_rgw_check_results.results }}"
-
-- include_tasks: start_rgw_keystone.yml
-  when:
-    - ceph_rgw_container_envs.results
-    - enable_ceph_rgw_keystone | bool

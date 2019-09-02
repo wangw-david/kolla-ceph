@@ -9,6 +9,7 @@ Options:
     --image, <images tag>              (Required) Specify images tag to be deployed
     --limit <host>                     (Optional) Specify host to run plays
     --forks <forks>                    (Optional) Number of forks to run Ansible with
+    --daemon <ceph-daemon>             (Optional) Specify ceph daemon to be installed, default is all,[ceph-mon,ceph-mgr,ceph-osd,ceph-rgw,ceph-mds]
     --cluster <ceph-cluster-name>      (Required) Specifies the name of the ceph cluster to deploy, which should be placed in the ceph-env folder
     --skip-pull                        (Optional) Whether to skip pulling the image
     --verbose, -v                      (Optional) Increase verbosity of ansible-playbook
@@ -22,7 +23,7 @@ EOF
 }
 
 SHORT_OPTS="hv"
-LONG_OPTS="help,image:,yes-i-really-really-mean-it,limit:,forks:,cluster:,skip-pull,verbose"
+LONG_OPTS="help,image:,yes-i-really-really-mean-it,limit:,forks:,daemon:,cluster:,skip-pull,verbose"
 
 RAW_ARGS="$*"
 ARGS=$(getopt -o "${SHORT_OPTS}" -l "${LONG_OPTS}" --name "$0" -- "$@") || { usage >&2; exit 2; }
@@ -49,6 +50,11 @@ while [[ "$#" -gt 0 ]]; do
 
     (--forks)
             FORKS_NUM="$2"
+            shift 2
+            ;;
+
+    (--daemon)
+            CEPH_DAEMONS=$2
             shift 2
             ;;
 
@@ -156,6 +162,15 @@ if [[ -z ${IMAGE_TAG} ]]; then
 fi
 
 ##############################
+# Set ceph install daemon
+##############################
+
+LIMIT_DAEMONS=""
+if [[ -n $CEPH_DAEMONS ]];then
+    LIMIT_DAEMONS="[${CEPH_DAEMONS}]"
+fi
+
+##############################
 # Set ansible command
 ##############################
 function set_ansible_vars {
@@ -165,6 +180,9 @@ function set_ansible_vars {
         ANSIBLE_VARS="${ANSIBLE_VARS} --limit ${LIMIT_HOSTS}"
     fi
 
+    if [[ -n "${LIMIT_DAEMONS}" ]]; then
+        ANSIBLE_VARS="${ANSIBLE_VARS} -e ceph_install_daemons=${LIMIT_DAEMONS}"
+    fi
     if [[ -n "${CEPH_SERIAL}" ]]; then
         ANSIBLE_VARS="${ANSIBLE_VARS} -e ceph_serial=${CEPH_SERIAL}"
     fi
@@ -201,6 +219,11 @@ function pull_images(){
 #################################
 
 function print_deploy_details() {
+    if [[ -z ${LIMIT_DAEMONS} ]]; then
+        local show_limit_daemons="all daemons"
+    else
+        local show_limit_daemons="${LIMIT_DAEMONS}"
+    fi
     if [[ -z ${LIMIT_HOSTS} ]]; then
         local show_limit_hosts="all nodes"
     else
@@ -212,6 +235,7 @@ function print_deploy_details() {
     echo    "*************** Please check here ********************************"
     echo    ""
     echo    "Will be [ ${CEPH_ACTION} ] [ ${CEPH_CLUSTER} ] cluster:"
+    echo -e "    The ceph daemon           : [ ${show_limit_daemons} ]"
     echo -e "    The image tag             : [ ${show_image_tag} ]"
     echo -e "    Limited nodes             : [ ${show_limit_hosts} ]"
     echo    "    The config dir            : [ ${CLUSTER_CONFIG_PATH} ]"

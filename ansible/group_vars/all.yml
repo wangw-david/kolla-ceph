@@ -149,3 +149,14 @@ ceph_mon_host_type: "IP"
 ceph_mgr_host_type: "INVENTORY"
 ceph_osd_host_type: "IP"
 ceph_mds_host_type: "INVENTORY"
+
+# Set the ceph daemon you want to install in a deployment.
+# This parameter is valid for daemons that are already enabled. When the
+# value of the component is no, the corresponding daemon will be skipped in
+# the deployment. This allows the user to modify only some daemons instead of all.
+ceph_install_daemons:
+  - 'ceph-mon'
+  - 'ceph-mgr'
+  - 'ceph-osd'
+  - 'ceph-rgw'
+  - 'ceph-mds'
