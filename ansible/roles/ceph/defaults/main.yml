@@ -80,16 +80,40 @@ ceph_mds_hostname: "{%- if ceph_mds_host_type == 'HOSTNAME' -%}{{ ansible_hostna
 ##########
 # Ceph MDS
 ##########
-cephfs_data_pool_name: "cephfs_data"
-cephfs_data_pool_type: "{{ ceph_pool_type }}"
-cephfs_data_pool_cache_mode: "{{ ceph_cache_mode }}"
-cephfs_data_pool_pg_num: "{{ ceph_pool_pg_num }}"
-cephfs_data_pool_pgp_num: "{{ ceph_pool_pgp_num }}"
-cephfs_metadata_pool_name: "cephfs_metadata"
-cephfs_metadata_pool_type: "{{ ceph_pool_type }}"
-cephfs_metadata_pool_cache_mode: "{{ ceph_cache_mode }}"
-cephfs_metadata_pool_pg_num: "{{ ceph_pool_pg_num }}"
-cephfs_metadata_pool_pgp_num: "{{ ceph_pool_pgp_num }}"
+# If you don't want to use the default configuration, you can customize the
+# cephfs_pools with the same name in global.yml, it will override the dict
+# definition here.
+cephfs_pools:
+  - pool_name: "cephfs_data"
+    pool_type: "{{ ceph_pool_type }}"
+    pool_pg_num: "{{ ceph_pool_pg_num }}"
+    pool_pgp_num: "{{ ceph_pool_pgp_num }}"
+    pool_erasure_name: "{{ ceph_erasure_name }}"
+    pool_erasure_profile: "{{ ceph_erasure_profile }}"
+    pool_rule_name: "{{ ceph_rule_name }}"
+    pool_rule: "{{ ceph_rule }}"
+    pool_cache_enable: "{{ ceph_enable_cache | bool }}"
+    pool_cache_mode: "{{ ceph_cache_mode }}"
+    pool_cache_rule_name: "{{ ceph_cache_rule_name }}"
+    pool_cache_rule: "{{ ceph_cache_rule }}"
+    pool_cache_pg_num: 128
+    pool_cache_pgp_num: 128
+    pool_application: "cephfs"
+  - pool_name: "cephfs_metadata"
+    pool_type: "{{ ceph_pool_type }}"
+    pool_pg_num: "{{ ceph_pool_pg_num }}"
+    pool_pgp_num: "{{ ceph_pool_pgp_num }}"
+    pool_erasure_name: "{{ ceph_erasure_name }}"
+    pool_erasure_profile: "{{ ceph_erasure_profile }}"
+    pool_rule_name: "{{ ceph_rule_name }}"
+    pool_rule: "{{ ceph_rule }}"
+    pool_cache_enable: "{{ ceph_enable_cache | bool }}"
+    pool_cache_mode: "{{ ceph_cache_mode }}"
+    pool_cache_rule_name: "{{ ceph_cache_rule_name }}"
+    pool_cache_rule: "{{ ceph_cache_rule }}"
+    pool_cache_pg_num: 128
+    pool_cache_pgp_num: 128
+    pool_application: "cephfs"
 
 ####################
 # Kolla

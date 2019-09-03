@@ -125,9 +125,20 @@ ceph_pool_type: "replicated"
 # Integrate Ceph Rados Object Gateway with OpenStack keystone
 enable_ceph_rgw_keystone: "no"
 
-ceph_erasure_profile: "k=4 m=2 ruleset-failure-domain=host"
-ceph_rule: "default host {{ 'indep' if ceph_pool_type == 'erasure' else 'firstn' }}"
-ceph_cache_rule: "cache host firstn"
+
+# Kolla-ceph supports the device classes feature of ceph. Please configure the device
+# class in the mutinode inventory first, then use it.
+# If you use the device class(such as hdd and ssd), you can define the pool as follows:
+# ceph_erasure_profile: "k=4 m=2 ruleset-failure-domain=host crush-device-class=ssd"
+# ceph_rule: "default host hdd"
+# ceph_cache_rule: "cache host ssd"
+
+ceph_erasure_name: "erasure-profile"
+ceph_erasure_profile: "k=2 m=1 ruleset-failure-domain=host"
+ceph_rule_name: "disks"
+ceph_rule: "default host"
+ceph_cache_rule_name: "cache"
+ceph_cache_rule: "cache host"
 
 # Set the pgs and pgps for pool
 # WARNING! These values are dependant on the size and shape of your cluster -
@@ -160,3 +171,24 @@ ceph_install_daemons:
   - 'ceph-osd'
   - 'ceph-rgw'
   - 'ceph-mds'
+
+############
+# ceph pools
+############
+ceph_pools:
+  - pool_name: "rbd"
+    pool_type: "replicated"
+    pool_rule_name: "hdd-rep"
+    pool_rule: "default host hdd"
+    pool_pg_num: 32
+    pool_pgp_num: 32
+    pool_application: "rbd"
+    create: "yes"
+  - pool_name: "rbd-ec"
+    pool_type: "erasure"
+    pool_erasure_name: "hdd-ec"
+    pool_erasure_profile: "k=2 m=1 crush-failure-domain=osd crush-device-class=hdd"
+    pool_pg_num: 32
+    pool_pgp_num: 32
+    pool_application: "rbd"
+    create: "yes"

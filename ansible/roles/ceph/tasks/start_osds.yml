@@ -57,3 +57,13 @@
     - "{{ id.results }}"
     - "{{ osds }}"
   when: osds
+
+- name: Set the device class to osd
+  kolla_ceph_device_class:
+    osd_id: "{{ item }}"
+    device_class: "{{ device_class }}"
+  delegate_to: "{{ groups['ceph-mon'][0] }}"
+  with_items: "{{ id.results | map(attribute='stdout') | list }}"
+  when:
+    - device_class is defined
+    - id.results is defined

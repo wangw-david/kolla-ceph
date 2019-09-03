@@ -68,3 +68,5 @@
     - enable_ceph_mds | bool
     - inventory_hostname in groups['ceph-mds']
     - "'ceph-mds' in ceph_install_daemons"
+
+- include_tasks: create_pools.yml

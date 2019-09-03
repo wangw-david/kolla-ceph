@@ -1,15 +1,16 @@
 # api_interface: NIC used by other services
 # storage_interface: NIC used by ceph public_network
 # cluster_interface: NIC used by ceph cluster_network
+# device_class: Specify device-class corresponding to osd, one node supports one device-class
 [mons]
 ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
 ceph-node2 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
 ceph-node3 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
 
 [osds]
-ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
-ceph-node2 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
-ceph-node3 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
+ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0 device_class=hdd
+ceph-node2 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0 device_class=hdd
+ceph-node3 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0 device_class=hdd
 
 [rgws]
 ceph-node1 ansible_user=root api_interface=eth0 storage_interface=eth0 cluster_interface=eth0
