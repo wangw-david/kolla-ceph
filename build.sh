@@ -50,7 +50,7 @@ BUILD_CONFIG="ceph-build.conf"
 ##############################
 # image tag
 ##############################
-if [[ ! -z ${IMAGE_TAG} ]]
+if [[ -n ${IMAGE_TAG} ]]
 then
     CEPH_TAG=${IMAGE_TAG}
     echo "Using specified TAG: ${CEPH_TAG} for ceph docker images."
@@ -98,7 +98,7 @@ ${CMD} 2>&1 | sudo tee -a "${BUILD_LOG_NAME}"
 ##############################
 RESULT_CODE=${PIPESTATUS[0]}
 if [[ ${RESULT_CODE} -eq 0 ]]; then
-    if [[ -f "${BUILD_TAG_NUMBER}" ]]; then
+    if [[ -z ${IMAGE_TAG} && -f "${BUILD_TAG_NUMBER}" ]]; then
         sudo sh -c "echo ${TAG_NUMBER} > ${BUILD_TAG_NUMBER}"
     fi
 
