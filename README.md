@@ -55,7 +55,6 @@ The following data will be saved under this path.
 |__ log
 |   |__ build-nautilus.0011.log # The logs of building image
 |__ TAG_CEPH_NUMBER   # Record the serial number of the last automatic build image tag
-
 ```
 
 - Build script options
