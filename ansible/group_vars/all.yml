@@ -91,6 +91,7 @@ default_container_dimensions: {}
 # Ceph options
 ###################
 
+# The default tag used for docker image, not recommended
 ceph_release: ""
 
 ceph_logging_debug: "no"

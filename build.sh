@@ -72,9 +72,14 @@ else
         echo "Unable to get ceph_version in ${BUILD_CONFIG}."
         exit 1
     fi
+    CEPH_RELEASE=$(grep 'ceph_release' ${BUILD_CONFIG} | tail -1 | awk -F "=" '{print $2}')
+    if [[ -z ${CEPH_RELEASE} ]];then
+        echo "Unable to get ceph_release in ${BUILD_CONFIG}."
+        exit 1
+    fi
 
-    CEPH_TAG=${CEPH_VERSION}.${BUILD_NUMBER}
-    CEPH_TAG=$(echo "${CEPH_TAG}" | sed 's/ //g')
+    CEPH_TAG=${CEPH_VERSION}-${CEPH_RELEASE}.${BUILD_NUMBER}
+    CEPH_TAG=${CEPH_TAG// /}
     echo "Read TAG:${CEPH_TAG} from ${BUILD_TAG_NUMBER}"
 fi
 

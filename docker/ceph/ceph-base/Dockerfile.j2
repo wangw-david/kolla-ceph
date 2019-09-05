@@ -11,20 +11,38 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
 
    {% set ceph_base_packages = [
         'btrfs-progs',
-        'ceph',
-        'ceph-mgr-dashboard',
-        'ceph-radosgw',
         'e2fsprogs',
         'gdisk',
         'hdparm',
         'parted',
         'smartmontools',
-        'xfsprogs'
-    ] %}
+        'xfsprogs',
+        'ceph-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-base-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-common-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-mds-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-mgr-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-mgr-dashboard-${KOLLA_CEPH_RELEASE}-0.el7.noarch',
+        'ceph-mon-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-osd-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-selinux-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'libcephfs2-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'libradosstriper1-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'librbd1-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'librgw2-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-cephfs-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-ceph-argparse-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-rados-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-rados-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-rgw-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'python-rbd-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'ceph-radosgw-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
+        'librados2-${KOLLA_CEPH_RELEASE}-0.el7.x86_64'
+   ] %}
 
     {% if base_arch in ['aarch64', 'x86_64'] %}
         {% set ceph_base_packages = ceph_base_packages + [
-            'ceph-fuse'
+            'ceph-fuse-${KOLLA_CEPH_RELEASE}-0.el7.x86_64'
         ] %}
     {% endif %}
 

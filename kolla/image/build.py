@@ -560,6 +560,7 @@ class KollaWorker(object):
         self.tag = conf.tag
         self.ceph_version = conf.ceph_version
         self.base_arch = conf.base_arch
+        self.ceph_release = conf.ceph_release
         self.debian_arch = self.base_arch
         if self.base_arch == 'aarch64':
             self.debian_arch = 'arm64'
@@ -815,6 +816,7 @@ class KollaWorker(object):
                       'install_type': self.install_type,
                       'namespace': self.namespace,
                       'ceph_version': self.ceph_version,
+                      'ceph_release': self.ceph_release,
                       'tag': self.tag,
                       'maintainer': self.maintainer,
                       'kolla_version': kolla_version,
