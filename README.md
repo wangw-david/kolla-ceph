@@ -30,12 +30,16 @@ retries = 1
 push_threads = 4
 maintainer = Kolla Ceph Project
 ceph_version = nautilus
+ceph_release = 14.2.2
 
 [profiles]
 image_ceph = fluentd,cron,kolla-toolbox,ceph
 ```
 
-``Note: Mainly modify the information of docker regisry.``
+``Note:``
+ 
+``1.Mainly modify the information of docker regisry.``
+``2.We can control the fixed version number with ceph_release.``
 
 ### Run the build script
 
@@ -51,9 +55,9 @@ The following data will be saved under this path.
 
 ```
 .
-|__ BUILD_CEPH_RECORD # Build records, such as "2019-08-29 15:05.35 build ceph | tag : [ nautilus.0001 ]"
+|__ BUILD_CEPH_RECORD # Build records, such as "2019-08-29 15:05.35 build ceph | tag : [ nautilus-14.2.2.0001 ]"
 |__ log
-|   |__ build-nautilus.0011.log # The logs of building image
+|   |__ nautilus-14.2.2.0001.log # The logs of building image
 |__ TAG_CEPH_NUMBER   # Record the serial number of the last automatic build image tag
 
 ```
@@ -75,7 +79,7 @@ Options:
 sh build.sh
 ```
 
-``Note: Build the image by default with (the ceph version).(serial number) as the image tag, for example nautilus.0001.``
+``Note: Build the image by default with (ceph version)-(ceph release).(serial number) as the image tag, for example nautilus-14.2.2.0001.``
 
 - Build the image using the specified tag
 

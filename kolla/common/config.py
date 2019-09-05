@@ -62,6 +62,8 @@ _CLI_OPTS = [
                help='The base architecture. Default is same as host.'),
     cfg.StrOpt('ceph-version',
                help='The ceph version to use'),
+    cfg.StrOpt('ceph-release',
+               help='The specific ceph version number to use'),
     cfg.BoolOpt('use-dumb-init', default=True,
                 help='Use dumb-init as init system in containers'),
     cfg.BoolOpt('debug', short='d', default=False,
