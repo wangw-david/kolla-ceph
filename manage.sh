@@ -18,7 +18,8 @@ Commands:
     deploy              Deploy Ceph cluster, also to fix daemons and update configurations
     reconfigure         Reconfigure Ceph service
     stop                Stop Ceph containers
-    upgrade             Upgrades existing Ceph Environment
+    upgrade             Upgrades existing Ceph Environment(Upgrades are limited to one by one, but there can be multiple daemons on a node,
+                        so please specify some daemons name, it is recommended to upgrade only one daemon at a time.)
 EOF
 }
 
@@ -125,7 +126,7 @@ esac
 ##############################
 # Check ceph cluster
 ##############################
-CEPH_ENV_PATH=`realpath ceph-env/`
+CEPH_ENV_PATH=$(realpath ceph-env/)
 
 if [[ -z ${CEPH_CLUSTER} ]]; then
     echo "Please specify the cluster name to be deployed [--cluster]."
@@ -166,10 +167,48 @@ fi
 ##############################
 
 LIMIT_DAEMONS=""
-if [[ -n $CEPH_DAEMONS ]];then
+
+if [[ -n $CEPH_DAEMONS ]]; then
+    if [[ "${CEPH_ACTION}" == "upgrade" ]]; then
+        if [[ "${CEPH_DAEMONS}" =~ "ceph-mon" && "${CEPH_DAEMONS}" != "ceph-mon" ]] ; then
+            cat <<EOF
+Because the upgrade of mon is the highest priority, if you just started upgrading the cluster, please specify only mon
+first (--daemon ceph-mon), then upgrade other daemons.
+EOF
+            exit 1
+        fi
+    fi
     LIMIT_DAEMONS="[${CEPH_DAEMONS}]"
+else
+    if [[ "${CEPH_ACTION}" == "upgrade" ]]; then
+      cat <<EOF
+When upgrading, instead of executing multiple nodes at the same time, they are executed one after the other. For the
+same daemon, it should be performed in the same upgrade, so please specify the name of the daemon to be upgraded(--daemon).
+EOF
+    fi
+    exit 1
 fi
 
+if [[ -z ${LIMIT_HOSTS} ]] ; then
+    if [[ "${CEPH_DAEMONS}" =~ "ceph-mon" ]] ; then
+        limit_for_upgrade="mons,"
+    fi
+    if [[ "${CEPH_DAEMONS}" =~ "ceph-mgr" ]] ; then
+        limit_for_upgrade="${limit_for_upgrade}mgrs,"
+    fi
+    if [[ "${CEPH_DAEMONS}" =~ "ceph-osd" ]] ; then
+        limit_for_upgrade="${limit_for_upgrade}osds,"
+    fi
+    if [[ "${CEPH_DAEMONS}" =~ "ceph-rgw" ]] ; then
+        limit_for_upgrade="${limit_for_upgrade}rgws,"
+    fi
+    if [[ "${CEPH_DAEMONS}" =~ "ceph-mds" ]] ; then
+        limit_for_upgrade="${limit_for_upgrade}mdss,"
+    fi
+    if [[ -n ${limit_for_upgrade} ]]; then
+        LIMIT_HOSTS=${limit_for_upgrade}
+    fi
+fi
 ##############################
 # Set ansible command
 ##############################

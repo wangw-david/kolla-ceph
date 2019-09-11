@@ -31,39 +31,11 @@
   changed_when: False
   failed_when: id.rc != 0
 
-- name: Starting ceph-osd container
-  become: true
-  kolla_docker:
-    action: "start_container"
-    common_options: "{{ docker_common_options }}"
-    environment:
-      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
-      OSD_ID: "{{ item.0.stdout }}"
-      JOURNAL_PARTITION: "{{ item.1.journal }}"
-      TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES: "{{ ceph_tcmalloc_tc_bytes }}"
-      OSD_STORETYPE: "{{ ceph_osd_store_type }}"
-      OSD_BS_FSUUID: "{{ item.1['fs_uuid'] }}"
-    image: "{{ ceph_osd_image_full }}"
-    name: "ceph_osd_{{ item.0.stdout }}"
-    pid_mode: "host"
-    privileged: True
-    volumes:
-      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-      - "/dev/:/dev/"
-      - "/var/lib/ceph/osd/{{ item.1['fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ item.0.stdout }}"
-      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+- include: start_disk_osd.yml
+  vars:
+    osd_id: "{{ item.0 }}"
+    osd_disk: "{{ item.1 }}"
   with_together:
     - "{{ id.results }}"
     - "{{ osds }}"
   when: osds
-
-- name: Set the device class to osd
-  kolla_ceph_device_class:
-    osd_id: "{{ item }}"
-    device_class: "{{ device_class }}"
-  delegate_to: "{{ groups['ceph-mon'][0] }}"
-  with_items: "{{ id.results | map(attribute='stdout') | list }}"
-  when:
-    - device_class is defined
-    - id.results is defined

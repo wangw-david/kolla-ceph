@@ -1,6 +1,4 @@
 ---
-# NOTE(yoctozepto): this file is used during upgrade as well
-
 - include_tasks: config.yml
 
 - include_tasks: check_mons.yml

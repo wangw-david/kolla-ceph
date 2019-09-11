@@ -1,0 +1,11 @@
+---
+- name: Run ceph health check and wait HEALTH_OK
+  become: true
+  shell: docker exec ceph_mon ceph health
+  delegate_to: "{{ groups['ceph-mon'][0] }}"
+  register: ceph_health
+  until: ceph_health.stdout.find("HEALTH_OK") != -1
+  retries: "{{ ceph_health_check_retries }}"
+  delay: "{{ ceph_health_check_delay }}"
+  changed_when: False
+  when:

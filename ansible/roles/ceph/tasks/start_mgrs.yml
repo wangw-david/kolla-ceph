@@ -1,4 +1,9 @@
 ---
+- include_tasks: check_ceph_health.yml
+  when:
+    - ceph_action == "upgrade"
+    - enable_upgrade_health_check | bool
+
 - name: Getting ceph mgr keyring
   become: true
   kolla_ceph_keyring:

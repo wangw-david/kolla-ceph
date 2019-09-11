@@ -1,9 +1,60 @@
 ---
-- include_tasks: deploy.yml
+- include_tasks: config.yml
+
+- include_tasks: check_mons.yml
+
+- name: Registering available mon
+  set_fact:
+    available_mon: "{{ active_mon if active_mon is defined }}"
+  failed_when: "{{ active_mon is undefined }}"
+  run_once: True
+
+- include_tasks: distribute_keyrings.yml
+
+# NOTE(yoctozepto): this ensures caps for admin are always up-to-date (run as earliest as possible = after MONs start)
+# this is retried because the cluster might not be fully operational yet (quorum gathering)
+- name: configuring client.admin caps
+  become: true
+  kolla_ceph_keyring:
+    name: client.admin
+    caps: "{{ ceph_client_admin_keyring_caps }}"
+  run_once: True
+  delegate_to: "{{ available_mon }}"
+  register: result
+  until: result is success
+  retries: 3
+  delay: 15
+
+- include_tasks: start_mons.yml
+  when:
+    - inventory_hostname in groups['ceph-mon']
+    - "'ceph-mon' in ceph_install_daemons"
+
+- include_tasks: start_mgrs.yml
+  when:
+    - inventory_hostname in groups['ceph-mgr']
+    - "'ceph-mgr' in ceph_install_daemons"
+
+- include_tasks: start_osds.yml
+  when:
+    - inventory_hostname in groups['ceph-osd']
+    - "'ceph-osd' in ceph_install_daemons"
+
+- include_tasks: start_rgws.yml
+  when:
+    - enable_ceph_rgw | bool
+    - inventory_hostname in groups['ceph-rgw']
+    - "'ceph-rgw' in ceph_install_daemons"
+
+- include_tasks: start_mdss.yml
+  when:
+    - enable_ceph_mds | bool
+    - inventory_hostname in groups['ceph-mds']
+    - "'ceph-mds' in ceph_install_daemons"
 
 - name: Check final release (as running on MONs)
   become: true
-  command: "docker exec ceph_mon ceph -m {{ hostvars[inventory_hostname]['ansible_' + storage_interface]['ipv4']['address'] }} versions"
+  command: "docker exec ceph_mon ceph versions"
   changed_when: false
   register: ceph_release_command
   delegate_to: "{{ available_mon }}"
@@ -11,7 +62,7 @@
 
 - name: Finalize the upgrade by disallowing older OSDs
   become: true
-  command: "docker exec ceph_mon ceph -m {{ hostvars[inventory_hostname]['ansible_' + storage_interface]['ipv4']['address'] }} osd require-osd-release {{ ((ceph_release_command.stdout|from_json).mon | string).split(' ')[4] }}"
+  command: "docker exec ceph_mon ceph osd require-osd-release {{ ((ceph_release_command.stdout|from_json).mon | string).split(' ')[4] }}"
   changed_when: false
   delegate_to: "{{ available_mon }}"
   run_once: true

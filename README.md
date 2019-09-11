@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The purpose of this repo is to provide a docker deployment tool of ceph, it include building ceph image, deploying ceph cluster, maintaining ceph services, upgrading ceph versions, updating configurations, and related operations.
+The purpose of this repo is to provide a docker deployment tool of ceph, it include building ceph image, deploying ceph cluster, maintaining ceph daemons, upgrading ceph versions, updating configurations, and related operations.
 
-Previously, the openstack/kolla project provided a good structure for containerized deployments, including some deployments of ceph, but the Kolla community was planning to abandon the development of ceph deployments, and they wanted to focus on the work related to openstack.
+Previously, the openstack/kolla project provided a good structure for containerized deployments, including the deployment of ceph, but the Kolla community was planning to abandon the development of ceph deployment, and they wanted to focus on the work related to openstack.
 
 I think this way of deploying ceph is very good. It's a pity to give up, so I will make secondary development on the basis of kolla. Because my energy is limited, so this repo currently only provides containerization and related script settings based on centos 7.
 
@@ -36,10 +36,9 @@ ceph_release = 14.2.2
 image_ceph = fluentd,cron,kolla-toolbox,ceph
 ```
 
-``Note:``
- 
-``1.Mainly modify the information of docker regisry.``
-``2.We can control the fixed version number with ceph_release.``
+``Note:
+1.Mainly modify the information of docker regisry.
+2.We can control the fixed version number with ceph_release.``
 
 ### Run the build script
 
@@ -57,9 +56,8 @@ The following data will be saved under this path.
 .
 |__ BUILD_CEPH_RECORD # Build records, such as "2019-08-29 15:05.35 build ceph | tag : [ nautilus-14.2.2.0001 ]"
 |__ log
-|   |__ nautilus-14.2.2.0001.log # The logs of building image
+|Â Â  |__ nautilus-14.2.2.0001.log # The logs of building image
 |__ TAG_CEPH_NUMBER   # Record the serial number of the last automatic build image tag
-
 ```
 
 - Build script options
@@ -95,10 +93,10 @@ sh build.sh --tag test.0001
 
 ```
 |__ ceph-env
-|   |__test
-|       |__ ceph.conf
-|       |__ globals.yml
-|       |__ inventory
+|Â Â  |__test
+|Â Â      |__ ceph.conf
+|Â Â      |__ globals.yml
+|Â Â      |__ inventory
 
 ```
 You need to create a folder in ceph-env and refer to the cluster by the name of the folder.
@@ -217,7 +215,10 @@ The following are the different meanings of the suffix.
 (B) : OSD Block Partition
 (D) : OSD DB Partition
 (W) : OSD WAL Partition
-(null) : In the deployment of kolla-ceph, a 100M partition is needed to save the data needed for osd startup, so it is called osd data partition. If there is a separate block partition, then this partition only represents osd data, otherwise it represents 100M data partition and the rest will be used as a block partition
+(null) : In the deployment of kolla-ceph, a 100M partition is needed to save the
+data needed for osd startup, so it is called osd data partition. If there is a
+separate block partition, then this partition only represents osd data, otherwise
+it represents 100M data partition and the rest will be used as a block partition
 ```
 
 - how to preapare disk
@@ -250,7 +251,9 @@ KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1
 
 The following are the different meanings of the suffix.
 (J) : OSD Journal Partition
-(null) : If there is a separate Journal partition, then this partition only represents osd data, otherwise it represents 5G Journal partition and the rest will be used as a data partition
+(null) : If there is a separate Journal partition, then this partition only
+represents osd data, otherwise it represents 5G Journal partition and the rest
+will be used as a data partition
 ```
 
 - how to preapare disk
@@ -288,7 +291,8 @@ Commands:
     deploy              Deploy Ceph cluster, also to fix daemons and update configurations
     reconfigure         Reconfigure Ceph service
     stop                Stop Ceph containers
-    upgrade             Upgrades existing Ceph Environment
+    upgrade             Upgrades existing Ceph Environment(Upgrades are limited to one by one, but there can be multiple daemons on a node,
+                        so please specify some daemons name, it is recommended to upgrade only one daemon at a time.)
 
 ```
 
@@ -311,5 +315,89 @@ sh manage.sh deploy --cluster test --image nautilus.0001 --daemon ceph-osd,ceph-
 - You can modify a service on a node, such as repairing a damaged osd on a node.
 
 ```
-sh manage.sh deploy --cluster test --image nautilus.0011 --daemon ceph-osd --limit ceph-node3
+sh manage.sh deploy --cluster test --image nautilus.0001 --daemon ceph-osd --limit ceph-node3
 ```
+
+### Upgrade an existing ceph cluster
+
+Kolla-ceph sets the upgraded nodes one by one, that is, serial execution (setting the ansible serial to 1).
+Ceph has many daemons, such as mon, osd, mgr, rgw, mds. There may be some different daemons on a node,
+the same daemon should be upgraded in sequence, rather than upgrading all daemons on a node. The following
+two diagrams are used to explain the upgrade process.
+
+sample:
+
+| hosts | daemons |
+| :-----| :---- |
+| ceph-node1 | mon,mgr,mds,rgw,osd |
+| ceph-node2 | mon,mgr,rgw,osd |
+| ceph-node3 | mds,osd |
+
+- no serial(This method has been banned in the manage.sh script):
+
+```
+   Start-->ceph-node1-->mon-->mgr-->osd-->rgw-->mds-->End
+   Start-->ceph-node2-->mon-->mgr-->osd-->rgw-->End
+   Start-->ceph-node3-->osd-->mds-->End
+```
+
+- serial is 1(This method is also not recommended):
+
+```
+   Start-->ceph-node1-->mon-->mgr-->osd-->rgw-->mds--> NEXT NODE
+           ceph-node2-->mon-->mgr-->osd-->rgw--> NEXT NODE
+           ceph-node3-->osd-->mds-->End
+```
+
+We don't want to upgrade like this, the best way is to upgrade all mons first, then upgrade all mgrs, all osds, etc.
+
+- Specify daemon while serial upgrade (upgrade method supported by kolla-ceph)
+
+```
+   # sh manage.sh upgrade --cluster test --image nautilus.0001 --daemon ceph-mon
+   Start-->ceph-node1
+                     |-->mon--> NEXT NODE
+           ceph-node2
+                     |-->mon--> End
+
+   # sh manage.sh upgrade --cluster test --image nautilus.0001 --daemon ceph-mgr
+   Start-->ceph-node1
+                    |-->mgr--> NEXT NODE
+           ceph-node2
+                    |-->mgr--> End
+
+   # sh manage.sh upgrade --cluster test --image nautilus.0001 --daemon ceph-osd
+   Start-->ceph-node1
+                     |-->osd.1-->osd.2--> NEXT NODE
+           ceph-node2
+                     |-->osd.3-->osd.4--> End
+
+   # sh manage.sh upgrade --cluster test --image nautilus.0001 --daemon ceph-osd --limit ceph-node1
+   Start-->ceph-node1
+                     |-->osd.1-->osd.2--> End
+
+   # sh manage.sh upgrade --cluster test --image nautilus.0001 --daemon ceph-osd,ceph-mgr,ceph-mds
+   Start-->ceph-node1
+                     |-->mgr-->osd.1-->osd.2-->mds--> NEXT NODE
+           ceph-node2
+                     |->mgr-->osd.3-->osd.4-->mds--> End
+```
+``Note: 1. Mon has mandatory requirements, and all mons need to be upgraded before upgrading other daemons. 2. The specified ceph daemon function can be used with the --limit function. By default, manage.sh restricts the task to
+ only execute on the node where the daemon is located. You can specify the limit node instead of the default node.``
+
+ - Start ceph health check when upgrading
+
+If your cluster status is HEALTH_OK, you can enable cluster status detection. There will be a status check between the two container upgrades until the ceph cluster status changes to HEALTH_OK.
+
+If the cluster status does not change back to HEALTH_OK after a limited number of times and intervals, the upgrade task will be interrupted.
+
+ ```
+ # When ceph is upgraded, whether to enable cluster status monitoring.
+# When the value is yes, please confirm that the status of the ceph
+# cluster is HEALTH_OK and then execute.
+enable_upgrade_health_check: "no"
+
+# Maximum number and interval of ceph cluster check
+ceph_health_check_retries: 15
+ceph_health_check_delay: 20
+ ```
