@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 # Copyright 2015 Sam Yaple
+# Copyright 2019 Wang Wei
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -90,6 +91,8 @@ PREFERRED_DEVICE_LINK_ORDER = [
     '/dev/disk/by-partlabel'
 ]
 
+CEPH_MPATH_LIST = list()
+
 
 def get_id_part_entry_name(dev, use_udev):
     if use_udev:
@@ -124,9 +127,78 @@ def get_id_fs_uuid(dev, use_udev):
     return id_fs_uuid
 
 
+def get_part_label_for_mpath(dev, use_udev):
+    dev_name = ''
+    if use_udev:
+        dev_name = dev.get('ID_PART_ENTRY_NAME', '')
+
+    if dev_name == '':
+        out = subprocess.Popen(['/usr/sbin/blkid', '-o', 'export',  # nosec
+                                dev.device_node],
+                               stdout=subprocess.PIPE).communicate()
+        match = re.search(r'\nPARTLABEL=([\w-]+)', out[0])
+        if match:
+            dev_name = match.group(1)
+    return dev_name
+
+
+def get_id_part_uuid(dev, use_udev):
+    if use_udev:
+        id_part_uuid = dev.get('ID_PART_ENTRY_UUID', '')
+    else:
+        out = subprocess.Popen(['/usr/sbin/blkid', '-o', 'export',  # nosec
+                                dev.device_node],
+                               stdout=subprocess.PIPE).communicate()
+        match = re.search(r'\nPARTUUID=([\w-]+)', out[0])
+        if match:
+            id_part_uuid = match.group(1)
+        else:
+            id_part_uuid = ''
+    return id_part_uuid
+
+
+def get_mapper_path(dev):
+    match = re.search(r'/dev/mapper/[\w]+', dev.get('DEVLINKS', ''))
+    if match:
+        dev_path = match.group()
+    else:
+        dev_path = ''
+    return dev_path
+
+
+def is_mapper_device(dev):
+    if dev.get('DEVTYPE', '') == 'disk' and get_mapper_path(dev):
+        return True
+    return False
+
+
+def is_exists_device(ct, dev_name):
+    try:
+        pyudev.Device.from_device_file(ct, dev_name)
+    except OSError:
+        return False
+    return True
+
+
+def get_mapper_parent(ct, mapper_path):
+    part_num = re.sub(r'.*[^\d]', '', mapper_path)
+    dev_name = mapper_path[:-len(part_num)]
+
+    if is_exists_device(ct, dev_name):
+        return dev_name
+    else:
+        if dev_name.endswith('p') and dev_name[-2].isdigit():
+            dev_name = dev_name[:-1]
+            if is_exists_device(ct, dev_name):
+                return dev_name
+        return ''
+
+
 def is_dev_matched_by_name(dev, name, mode, use_udev):
     if dev.get('DEVTYPE', '') == 'partition':
         dev_name = get_id_part_entry_name(dev, use_udev)
+    elif 'CEPH' in name and '_BS' in name and is_mapper_device(dev):
+        dev_name = get_part_label_for_mpath(dev, use_udev)
     else:
         dev_name = dev.get('ID_FS_LABEL', '')
 
@@ -192,49 +264,100 @@ def extract_disk_info(ct, dev, name, use_udev):
 def extract_disk_info_bs(ct, dev, name, use_udev):
     if not dev:
         return
-    kwargs = dict(bs_blk_label='', bs_blk_device='', bs_db_label='',
-                  bs_db_device='', bs_wal_label='', bs_wal_device='',
-                  bs_wal_partition_num='', bs_db_partition_num='',
-                  bs_blk_partition_num='', partition='', partition_label='',
-                  partition_num='', device='', partition_usage='')
+    kwargs = dict()
     kwargs['fs_uuid'] = get_id_fs_uuid(dev, use_udev)
     kwargs['fs_label'] = dev.get('ID_FS_LABEL', '')
 
     if dev.get('DEVTYPE', '') == 'partition':
         actual_name = get_id_part_entry_name(dev, use_udev)
+        if actual_name in CEPH_MPATH_LIST:
+            return
+        dev_partition = dev.device_node
+        dev_parent = dev.find_parent('block').device_node
+        if 'iscsi' in dev.get('ID_PATH', ''):
+            dev_type = 'iscsi'
+        else:
+            dev_type = 'regular'
+    elif is_mapper_device(dev):
+        actual_name = get_part_label_for_mpath(dev, use_udev)
+        dev_partition = get_mapper_path(dev)
+        dev_parent = get_mapper_parent(ct, dev_partition)
+        if not dev_parent:
+            return
+        dev_type = 'mpath'
+        CEPH_MPATH_LIST.append(actual_name)
+    else:
+        return
 
-        if (('BOOTSTRAP_BS' in name or 'DATA_BS' in name)
-                and name in actual_name):
-            if actual_name.endswith("_B"):
-                kwargs['partition_usage'] = 'block'
-                kwargs['bs_blk_partition_num'] = \
-                    re.sub(r'.*[^\d]', '', dev.device_node)
-                kwargs['bs_blk_device'] = dev.find_parent('block').device_node
-                kwargs['bs_blk_label'] = actual_name
-                return kwargs
-            if actual_name.endswith("_D"):
-                kwargs['partition_usage'] = 'block.db'
-                kwargs['bs_db_partition_num'] = \
-                    re.sub(r'.*[^\d]', '', dev.device_node)
-                kwargs['bs_db_device'] = dev.find_parent('block').device_node
-                kwargs['bs_db_label'] = actual_name
-                return kwargs
-            if actual_name.endswith("_W"):
-                kwargs['partition_usage'] = 'block.wal'
-                kwargs['bs_wal_partition_num'] = \
-                    re.sub(r'.*[^\d]', '', dev.device_node)
-                kwargs['bs_wal_device'] = dev.find_parent('block').device_node
-                kwargs['bs_wal_label'] = actual_name
-                return kwargs
-            if '_BS' in actual_name:
-                kwargs['partition_usage'] = 'osd'
-                kwargs['partition'] = dev.find_parent('block').device_node
-                kwargs['partition_label'] = actual_name
-                kwargs['partition_num'] = \
-                    re.sub(r'.*[^\d]', '', dev.device_node)
-                kwargs['device'] = dev.find_parent('block').device_node
-                return kwargs
+    if ('BOOTSTRAP_BS' in name or 'DATA_BS' in name) and name in actual_name:
+        if actual_name.endswith("_B"):
+            kwargs['partition_usage'] = 'block'
+            kwargs['bs_blk_partition'] = dev_partition
+            kwargs['bs_blk_partition_num'] = \
+                re.sub(r'.*[^\d]', '', dev_partition)
+            kwargs['bs_blk_device'] = dev_parent
+            kwargs['bs_blk_label'] = actual_name
+            kwargs['bs_blk_partition_uuid'] = \
+                get_id_part_uuid(dev, use_udev)
+            kwargs['bs_blk_partition_type'] = dev_type
+            return kwargs
+        if actual_name.endswith("_D"):
+            kwargs['partition_usage'] = 'block.db'
+            kwargs['bs_db_partition'] = dev_partition
+            kwargs['bs_db_partition_num'] = \
+                re.sub(r'.*[^\d]', '', dev_partition)
+            kwargs['bs_db_device'] = dev_parent
+            kwargs['bs_db_label'] = actual_name
+            kwargs['bs_db_partition_uuid'] = \
+                get_id_part_uuid(dev, use_udev)
+            kwargs['bs_db_partition_type'] = dev_type
+            return kwargs
+        if actual_name.endswith("_W"):
+            kwargs['partition_usage'] = 'block.wal'
+            kwargs['bs_wal_partition'] = dev_partition
+            kwargs['bs_wal_partition_num'] = \
+                re.sub(r'.*[^\d]', '', dev_partition)
+            kwargs['bs_wal_device'] = dev_parent
+            kwargs['bs_wal_label'] = actual_name
+            kwargs['bs_wal_partition_uuid'] = \
+                get_id_part_uuid(dev, use_udev)
+            kwargs['bs_wal_partition_type'] = dev_type
+            return kwargs
+        if '_BS' in actual_name:
+            kwargs['partition_usage'] = 'osd'
+            kwargs['partition'] = dev_partition
+            kwargs['partition_label'] = actual_name
+            kwargs['partition_num'] = \
+                re.sub(r'.*[^\d]', '', dev_partition)
+            kwargs['partition_uuid'] = \
+                get_id_part_uuid(dev, use_udev)
+            kwargs['partition_type'] = dev_type
+            kwargs['device'] = dev_parent
+            return kwargs
     return 0
+
+
+def filter_mpath_subdisk(disks):
+    result = list()
+    for item in disks:
+        if (item['partition_usage'] == 'osd' and
+                item['partition_type'] != 'mpath' and
+                item['partition_label'] in CEPH_MPATH_LIST):
+            continue
+        if (item['partition_usage'] == 'block' and
+                item['bs_blk_partition_type'] != 'mpath' and
+                item['bs_blk_label'] in CEPH_MPATH_LIST):
+            continue
+        if (item['partition_usage'] == 'block.db' and
+                item['bs_db_partition_type'] != 'mpath' and
+                item['bs_db_label'] in CEPH_MPATH_LIST):
+            continue
+        if (item['partition_usage'] == 'block.wal' and
+                item['bs_wal_partition_type'] != 'mpath' and
+                item['bs_wal_label'] in CEPH_MPATH_LIST):
+            continue
+        result.append(item)
+    return result
 
 
 def nb_of_osd(disks):
@@ -252,8 +375,7 @@ def nb_of_osd(disks):
 def combine_info(disks):
     info = list()
     osds = nb_of_osd(disks)
-    osd_id = 0
-    while osd_id < osds['nb_of_osd']:
+    for osd_id in range(osds['nb_of_osd']):
         final = dict()
         idx = 0
         idx_osd = idx_blk = idx_wal = idx_db = -1
@@ -273,52 +395,64 @@ def combine_info(disks):
                     item['bs_db_label'] ==
                     osds['block_label'][osd_id] + "_D"):
                 idx_db = idx
-            idx = idx + 1
+            idx += 1
 
-        # write the information of block.db and block.wal to block item
-        # if block.db and block.wal are found
         if idx_blk != -1:
-            disks[idx_osd]['bs_blk_device'] = disks[idx_blk]['bs_blk_device']
-            disks[idx_osd]['bs_blk_label'] = disks[idx_blk]['bs_blk_label']
-            disks[idx_osd]['bs_blk_partition_num'] = \
+            final['bs_blk_device'] = disks[idx_blk]['bs_blk_device']
+            final['bs_blk_partition'] = disks[idx_blk]['bs_blk_partition']
+            final['bs_blk_partition_num'] = \
                 disks[idx_blk]['bs_blk_partition_num']
+            final['bs_blk_partition_uuid'] = \
+                disks[idx_blk]['bs_blk_partition_uuid']
+            final['bs_blk_partition_type'] = \
+                disks[idx_blk]['bs_blk_partition_type']
             disks[idx_blk]['partition_usage'] = ''
+            final['external_block'] = True
+        else:
+            # If no block partition was found, then kolla will automatically
+            # initialize the entire disk, so make sure the partition_num is 1
+            if int(disks[idx_osd]['partition_num']) != 1:
+                continue
+
+            final['bs_blk_device'] = disks[idx_osd]['device']
+            final['bs_blk_partition'] = disks[idx_osd]['partition'][:-1] + '2'
+            final['bs_blk_partition_num'] = 2
+            final['bs_blk_partition_type'] = \
+                disks[idx_osd]['partition_type']
+            final['external_block'] = False
+
         if idx_wal != -1:
-            disks[idx_osd]['bs_wal_device'] = disks[idx_wal]['bs_wal_device']
-            disks[idx_osd]['bs_wal_partition_num'] = \
+            final['bs_wal_device'] = disks[idx_wal]['bs_wal_device']
+            final['bs_wal_partition'] = disks[idx_wal]['bs_wal_partition']
+            final['bs_wal_partition_num'] = \
                 disks[idx_wal]['bs_wal_partition_num']
-            disks[idx_osd]['bs_wal_label'] = disks[idx_wal]['bs_wal_label']
+            final['bs_wal_partition_uuid'] = \
+                disks[idx_wal]['bs_wal_partition_uuid']
+            final['bs_wal_partition_type'] = \
+                disks[idx_wal]['bs_wal_partition_type']
             disks[idx_wal]['partition_usage'] = ''
+
         if idx_db != -1:
-            disks[idx_osd]['bs_db_device'] = disks[idx_db]['bs_db_device']
-            disks[idx_osd]['bs_db_partition_num'] = \
+            final['bs_db_device'] = disks[idx_db]['bs_db_device']
+            final['bs_db_partition'] = disks[idx_db]['bs_db_partition']
+            final['bs_db_partition_num'] = \
                 disks[idx_db]['bs_db_partition_num']
-            disks[idx_osd]['bs_db_label'] = disks[idx_db]['bs_db_label']
+            final['bs_db_partition_uuid'] = \
+                disks[idx_db]['bs_db_partition_uuid']
+            final['bs_db_partition_type'] = \
+                disks[idx_db]['bs_db_partition_type']
             disks[idx_db]['partition_usage'] = ''
 
         final['fs_uuid'] = disks[idx_osd]['fs_uuid']
         final['fs_label'] = disks[idx_osd]['fs_label']
-        final['bs_blk_device'] = disks[idx_osd]['bs_blk_device']
-        final['bs_blk_label'] = disks[idx_osd]['bs_blk_label']
-        final['bs_blk_partition_num'] = disks[idx_osd]['bs_blk_partition_num']
-        final['bs_db_device'] = disks[idx_osd]['bs_db_device']
-        final['bs_db_partition_num'] = disks[idx_osd]['bs_db_partition_num']
-        final['bs_db_label'] = disks[idx_osd]['bs_db_label']
-        final['bs_wal_device'] = disks[idx_osd]['bs_wal_device']
-        final['bs_wal_partition_num'] = disks[idx_osd]['bs_wal_partition_num']
-        final['bs_wal_label'] = disks[idx_osd]['bs_wal_label']
         final['device'] = disks[idx_osd]['device']
         final['partition'] = disks[idx_osd]['partition']
-        final['partition_label'] = disks[idx_osd]['partition_label']
         final['partition_num'] = disks[idx_osd]['partition_num']
-        final['external_journal'] = False
-        final['journal'] = ''
-        final['journal_device'] = ''
-        final['journal_num'] = 0
+        final['partition_uuid'] = disks[idx_osd]['partition_uuid']
+        final['partition_type'] = disks[idx_osd]['partition_type']
 
         info.append(final)
         disks[idx_osd]['partition_usage'] = ''
-        osd_id += 1
 
     return info
 
@@ -349,6 +483,8 @@ def main():
                         ret.append(info)
 
         if '_BS' in name and len(ret) > 0:
+            if len(CEPH_MPATH_LIST) > 0:
+                ret = filter_mpath_subdisk(ret)
             ret = combine_info(ret)
 
         module.exit_json(disks=json.dumps(ret))

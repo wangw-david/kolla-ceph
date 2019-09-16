@@ -43,11 +43,6 @@ enable_ceph_rgw: "yes"
 enable_ceph_dashboard: "yes"
 enable_prometheus_ceph_mgr_exporter: "no"
 
-# When ceph is upgraded, whether to enable cluster status monitoring.
-# When the value is yes, please confirm that the status of the ceph
-# cluster is HEALTH_OK and then execute.
-enable_upgrade_health_check: "no"
-
 fluentd_syslog_port: "5140"
 ####################
 # Docker options
@@ -123,6 +118,7 @@ ceph_osd_wipe_disk: ""
 
 # These are /etc/fstab options. Comma separated, no spaces (see fstab(8))
 ceph_osd_mount_options: "defaults,noatime"
+ceph_iscsi_mount_options: "defaults,_netdev,noatime"
 
 # A requirement for using the erasure-coded pools is you must setup a cache tier
 # Valid options are [ erasure, replicated ]
@@ -131,6 +127,14 @@ ceph_pool_type: "replicated"
 # Integrate Ceph Rados Object Gateway with OpenStack keystone
 enable_ceph_rgw_keystone: "no"
 
+# When ceph is upgraded, whether to enable cluster status monitoring.
+# When the value is yes, please confirm that the status of the ceph
+# cluster is HEALTH_OK and then execute.
+enable_upgrade_health_check: "no"
+
+# Maximum number and interval of ceph cluster check
+ceph_health_check_retries: 15
+ceph_health_check_delay: 20
 
 # Kolla-ceph supports the device classes feature of ceph. Please configure the device
 # class in the mutinode inventory first, then use it.

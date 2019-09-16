@@ -1,4 +1,11 @@
 ---
+- name: Copying the ceph rule file in order to generate the disk link
+  become: true
+  copy:
+    src: "{{ role_path }}/templates/60-ceph-by-parttypeuuid.rules"
+    dest: /etc/udev/rules.d/60-ceph-by-parttypeuuid.rules
+    mode: 0644
+
 - name: Looking up disks to bootstrap for Ceph OSDs
   become: true
   command: docker exec -t kolla_toolbox sudo -E ansible localhost
@@ -28,7 +35,8 @@
 - pause:
     prompt: |
      WARNING: It seems {{ item.device }} is marked to be wiped and partitioned for Ceph data and
-              a co-located journal, but appears to contain other existing partitions (>1).
+              a co-located journal in filestore (or block partition in bluestore), but appears
+              to contain other existing partitions (>1).
 
               If you are sure you want this disk to be *wiped* for use with Ceph, press enter.
 
@@ -36,7 +44,7 @@
               ceph_osd_wipe_disk: 'yes-i-really-really-mean-it' within globals.yml)
   with_items: "{{ osds_bootstrap|default([]) }}"
   when:
-    - not item.external_journal | bool
+    - not {{ item.external_journal | bool if item.external_journal is defined else item.external_block | bool }}
     - item.device.split('/')[2] in ansible_devices  # if there is no device in setup (like loopback, we don't need to warn user
     - ansible_devices[item.device.split('/')[2]].partitions|count > 1
     - ceph_osd_wipe_disk != "yes-i-really-really-mean-it"
@@ -50,29 +58,38 @@
     environment:
       KOLLA_BOOTSTRAP:
       KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
-      OSD_DEV: "{{ item.1.device }}"
-      OSD_PARTITION: "{{ item.1.partition }}"
-      OSD_PARTITION_NUM: "{{ item.1.partition_num }}"
-      JOURNAL_DEV: "{{ item.1.journal_device }}"
-      JOURNAL_PARTITION: "{{ item.1.journal }}"
-      JOURNAL_PARTITION_NUM: "{{ item.1.journal_num }}"
-      USE_EXTERNAL_JOURNAL: "{{ item.1.external_journal | bool }}"
+      OSD_DEV: "{{ item.1.device | default('') }}"
+      OSD_PARTITION: "{{ item.1.partition | default('') }}"
+      OSD_PARTITION_NUM: "{{ item.1.partition_num | default('') }}"
+      JOURNAL_DEV: "{{ item.1.journal_device | default('') }}"
+      JOURNAL_PARTITION: "{{ item.1.journal | default('') }}"
+      JOURNAL_PARTITION_NUM: "{{ item.1.journal_num | default('') }}"
+      USE_EXTERNAL_JOURNAL: "{{ item.1.external_journal | default('') | bool }}"
       OSD_FILESYSTEM: "{{ ceph_osd_filesystem }}"
       OSD_INITIAL_WEIGHT: "{{ osd_initial_weight }}"
       HOSTNAME: "{{ ceph_osd_hostname }}"
       OSD_STORETYPE: "{{ ceph_osd_store_type }}"
       OSD_BS_DEV: "{{ item.1.device | default('') }}"
-      OSD_BS_LABEL: "{{ item.1.partition_label | default('') }}"
+      OSD_BS_PARTITION: "{{ item.1.partition | default('') }}"
       OSD_BS_PARTNUM: "{{ item.1.partition_num | default('') }}"
+      OSD_BS_PARTUUID: "{{ item.1.partition_uuid | default('') }}"
+      OSD_BS_PARTTYPE: "{{ item.1.partition_type | default('') }}"
       OSD_BS_BLK_DEV: "{{ item.1.bs_blk_device | default('') }}"
-      OSD_BS_BLK_LABEL: "{{ item.1.bs_blk_label | default('') }}"
+      OSD_BS_BLK_PARTITION: "{{ item.1.bs_blk_partition | default('') }}"
       OSD_BS_BLK_PARTNUM: "{{ item.1.bs_blk_partition_num | default('') }}"
+      OSD_BS_BLK_PARTUUID: "{{ item.1.bs_blk_partition_uuid | default('') }}"
+      OSD_BS_BLK_PARTTYPE: "{{ item.1.bs_blk_partition_type | default('') }}"
       OSD_BS_WAL_DEV: "{{ item.1.bs_wal_device | default('') }}"
-      OSD_BS_WAL_LABEL: "{{ item.1.bs_wal_label | default('') }}"
+      OSD_BS_WAL_PARTITION: "{{ item.1.bs_wal_partition | default('') }}"
       OSD_BS_WAL_PARTNUM: "{{ item.1.bs_wal_partition_num | default('') }}"
+      OSD_BS_WAL_PARTUUID: "{{ item.1.bs_wal_partition_uuid | default('') }}"
+      OSD_BS_WAL_PARTTYPE: "{{ item.1.bs_wal_partition_type | default('') }}"
       OSD_BS_DB_DEV: "{{ item.1.bs_db_device | default('') }}"
-      OSD_BS_DB_LABEL: "{{ item.1.bs_db_label | default('') }}"
+      OSD_BS_DB_PARTITION: "{{ item.1.bs_db_partition | default('') }}"
       OSD_BS_DB_PARTNUM: "{{ item.1.bs_db_partition_num | default('') }}"
+      OSD_BS_DB_PARTUUID: "{{ item.1.bs_db_partition_uuid | default('') }}"
+      OSD_BS_DB_PARTTYPE: "{{ item.1.bs_db_partition_type | default('') }}"
+      USE_EXTERNAL_BLOCK: "{{ item.1.external_block | default('') | bool }}"
     image: "{{ ceph_osd_image_full }}"
     labels:
       BOOTSTRAP:
@@ -89,7 +106,8 @@
 - pause:
     prompt: |
      WARNING: It seems {{ item.device }} is marked to be wiped and partitioned for Ceph data and
-              a co-located journal, but appears to contain other existing partitions (>1).
+              a co-located journal in filestore (or block partition in bluestore), but appears
+              to contain other existing partitions (>1).
 
               If you are sure you want this disk to be *wiped* for use with Ceph, press enter.
 
@@ -97,7 +115,7 @@
               ceph_osd_wipe_disk: 'yes-i-really-really-mean-it' within globals.yml)
   with_items: "{{ osds_cache_bootstrap|default([]) }}"
   when:
-    - not item.external_journal | bool
+    - not {{ item.external_journal | bool if item.external_journal is defined else item.external_block | bool }}
     - ansible_devices[item.device.split('/')[2]].partitions|count > 1
     - ceph_osd_wipe_disk != "yes-i-really-really-mean-it"
 
@@ -111,29 +129,38 @@
       KOLLA_BOOTSTRAP:
       KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
       CEPH_CACHE:
-      OSD_DEV: "{{ item.1.device }}"
-      OSD_PARTITION: "{{ item.1.partition }}"
-      OSD_PARTITION_NUM: "{{ item.1.partition_num }}"
-      JOURNAL_DEV: "{{ item.1.journal_device }}"
-      JOURNAL_PARTITION: "{{ item.1.journal }}"
-      JOURNAL_PARTITION_NUM: "{{ item.1.journal_num }}"
-      USE_EXTERNAL_JOURNAL: "{{ item.1.external_journal | bool }}"
+      OSD_DEV: "{{ item.1.device | default('') }}"
+      OSD_PARTITION: "{{ item.1.partition | default('') }}"
+      OSD_PARTITION_NUM: "{{ item.1.partition_num | default('') }}"
+      JOURNAL_DEV: "{{ item.1.journal_device | default('') }}"
+      JOURNAL_PARTITION: "{{ item.1.journal | default('') }}"
+      JOURNAL_PARTITION_NUM: "{{ item.1.journal_num | default('') }}"
+      USE_EXTERNAL_JOURNAL: "{{ item.1.external_journal | default('') | bool }}"
       OSD_FILESYSTEM: "{{ ceph_osd_filesystem }}"
       OSD_INITIAL_WEIGHT: "{{ osd_initial_weight }}"
       HOSTNAME: "{{ ceph_osd_hostname }}"
       OSD_STORETYPE: "{{ ceph_osd_store_type }}"
       OSD_BS_DEV: "{{ item.1.device | default('') }}"
-      OSD_BS_LABEL: "{{ item.1.partition_label | default('') }}"
+      OSD_BS_PARTITION: "{{ item.1.partition | default('') }}"
       OSD_BS_PARTNUM: "{{ item.1.partition_num | default('') }}"
+      OSD_BS_PARTUUID: "{{ item.1.partition_uuid | default('') }}"
+      OSD_BS_PARTTYPE: "{{ item.1.partition_type | default('') }}"
       OSD_BS_BLK_DEV: "{{ item.1.bs_blk_device | default('') }}"
-      OSD_BS_BLK_LABEL: "{{ item.1.bs_blk_label | default('') }}"
+      OSD_BS_BLK_PARTITION: "{{ item.1.bs_blk_partition | default('') }}"
       OSD_BS_BLK_PARTNUM: "{{ item.1.bs_blk_partition_num | default('') }}"
+      OSD_BS_BLK_PARTUUID: "{{ item.1.bs_blk_partition_uuid | default('') }}"
+      OSD_BS_BLK_PARTTYPE: "{{ item.1.bs_blk_partition_type | default('') }}"
       OSD_BS_WAL_DEV: "{{ item.1.bs_wal_device | default('') }}"
-      OSD_BS_WAL_LABEL: "{{ item.1.bs_wal_label|default('') }}"
+      OSD_BS_WAL_PARTITION: "{{ item.1.bs_wal_partition | default('') }}"
       OSD_BS_WAL_PARTNUM: "{{ item.1.bs_wal_partition_num | default('') }}"
+      OSD_BS_WAL_PARTUUID: "{{ item.1.bs_wal_partition_uuid | default('') }}"
+      OSD_BS_WAL_PARTTYPE: "{{ item.1.bs_wal_partition_type | default('') }}"
       OSD_BS_DB_DEV: "{{ item.1.bs_db_device | default('') }}"
-      OSD_BS_DB_LABEL: "{{ item.1.bs_db_label | default('') }}"
+      OSD_BS_DB_PARTITION: "{{ item.1.bs_db_partition | default('') }}"
       OSD_BS_DB_PARTNUM: "{{ item.1.bs_db_partition_num | default('') }}"
+      OSD_BS_DB_PARTUUID: "{{ item.1.bs_db_partition_uuid | default('') }}"
+      OSD_BS_DB_PARTTYPE: "{{ item.1.bs_db_partition_type | default('') }}"
+      USE_EXTERNAL_BLOCK: "{{ item.1.external_block | default('') | bool }}"
     image: "{{ ceph_osd_image_full }}"
     labels:
       BOOTSTRAP:

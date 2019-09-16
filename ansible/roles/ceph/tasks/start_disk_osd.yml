@@ -26,7 +26,7 @@
     environment:
       KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
       OSD_ID: "{{ osd_id.stdout }}"
-      JOURNAL_PARTITION: "{{ osd_disk.journal }}"
+      JOURNAL_PARTITION: "{{ osd_disk.journal | default('') }}"
       TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES: "{{ ceph_tcmalloc_tc_bytes }}"
       OSD_STORETYPE: "{{ ceph_osd_store_type }}"
       OSD_BS_FSUUID: "{{ osd_disk['fs_uuid'] }}"

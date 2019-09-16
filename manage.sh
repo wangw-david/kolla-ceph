@@ -181,12 +181,13 @@ EOF
     LIMIT_DAEMONS="[${CEPH_DAEMONS}]"
 else
     if [[ "${CEPH_ACTION}" == "upgrade" ]]; then
-      cat <<EOF
+        cat <<EOF
 When upgrading, instead of executing multiple nodes at the same time, they are executed one after the other. For the
 same daemon, it should be performed in the same upgrade, so please specify the name of the daemon to be upgraded(--daemon).
 EOF
+        exit 1
     fi
-    exit 1
+
 fi
 
 if [[ -z ${LIMIT_HOSTS} ]] ; then

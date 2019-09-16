@@ -33,137 +33,175 @@ function wait_partition_appear {
     exit 1
 }
 
+
+# Update the uuid corresponding to the partition, otherwise the uuid of
+# multipath disks will change after the host reboot.
+function trigger_part_uuid {
+    local dev_part=$1
+    udevadm control --reload || true
+    udevadm trigger "${dev_part}" || true
+}
+
+# For multipath disks, after changing the typecode, the corresponding path
+# change will be delayed by 1 second or more.
+function wait_device_link_appear {
+    local dev_path=$1
+    local dev_uuid=$2
+    local dev_part=$3
+    for(( i=0; i<10; i++ )); do
+        trigger_part_uuid "${dev_part}"
+        flag=$(ls $dev_path | awk '/'"$dev_uuid"'/{print $0}' | wc -l)
+        if [[ "${flag}" -eq 0 ]]; then
+            sleep 1
+        else
+            return 0
+        fi
+    done
+    echo "The device $dev_path/${dev_uuid} does not appear in the correct path."
+    exit 1
+}
+
 # Bootstrap and exit if KOLLA_BOOTSTRAP variable is set. This catches all cases
 # of the KOLLA_BOOTSTRAP variable being set, including empty.
 if [[ "${!KOLLA_BOOTSTRAP[@]}" ]]; then
     # NOTE(SamYaple): Static gpt partcodes
-    CEPH_JOURNAL_TYPE_CODE="45B0969E-9B03-4F30-B4C6-B4B80CEFF106"
-    CEPH_OSD_TYPE_CODE="4FBD7E29-9D25-41B8-AFD0-062C0CEFF05D"
-    CEPH_OSD_BS_WAL_TYPE_CODE="0FC63DAF-8483-4772-8E79-3D69D8477DE4"
-    CEPH_OSD_BS_DB_TYPE_CODE="CE8DF73C-B89D-45B0-AD98-D45332906d90"
+    REGULAR_JOURNAL_TYPE_CODE="45b0969e-9b03-4f30-b4c6-b4b80ceff106"
+    REGULAR_OSD_TYPE_CODE="4fbd7e29-9d25-41b8-afd0-062c0ceff05d"
+    REGULAR_OSD_BS_BLOCK_TYPE_CODE="cafecafe-9b03-4f30-b4c6-b4b80ceff106"
+    REGULAR_OSD_BS_WAL_TYPE_CODE="5ce17fce-4087-4169-b7ff-056cc58473f9"
+    REGULAR_OSD_BS_DB_TYPE_CODE="30cd0809-c2b2-499c-8879-2d6b78529876"
+
+    MPATH_OSD_TYPE_CODE="4fbd7e29-8ae0-4982-bf9d-5a8d867af560"
+    MPATH_OSD_BS_BLOCK_TYPE_CODE="cafecafe-8ae0-4982-bf9d-5a8d867af560"
+    MPATH_OSD_BS_WAL_TYPE_CODE="01b41e1b-002a-453c-9f17-88793989ff8f"
+    MPATH_OSD_BS_DB_TYPE_CODE="ec6d6385-e346-45dc-be91-da2a7c8b3261"
 
     # Wait for ceph quorum before proceeding
     ceph quorum_status
 
-    if [[ "${USE_EXTERNAL_JOURNAL}" == "False" ]]; then
-        # Formatting disk for ceph
-        if [[ "${OSD_STORETYPE}" == "bluestore" ]]; then
-            if [[ "${OSD_BS_DEV}" =~ "/dev/loop" ]]; then
-                sgdisk --zap-all -- "${OSD_BS_DEV}""p${OSD_BS_PARTNUM}"
-            else
-                sgdisk --zap-all -- "${OSD_BS_DEV}""${OSD_BS_PARTNUM}"
-            fi
-
-            if [ -n "${OSD_BS_BLK_DEV}" ] && [ "${OSD_BS_DEV}" != "${OSD_BS_BLK_DEV}" ] && [ -n "${OSD_BS_BLK_PARTNUM}" ]; then
-                if [[ "${OSD_BS_BLK_DEV}" =~ "/dev/loop" ]]; then
-                    sgdisk --zap-all -- "${OSD_BS_BLK_DEV}""p${OSD_BS_BLK_PARTNUM}"
-                else
-                    sgdisk --zap-all -- "${OSD_BS_BLK_DEV}""${OSD_BS_BLK_PARTNUM}"
-                fi
-            else
-                sgdisk --zap-all -- "${OSD_BS_DEV}"
-                sgdisk --new=1:0:+100M --mbrtogpt -- "${OSD_BS_DEV}"
-                sgdisk --largest-new=2 --mbrtogpt -- "${OSD_BS_DEV}"
-                partprobe_device "${OSD_BS_DEV}"
-
-                if [[ "${OSD_BS_DEV}" =~ "/dev/loop" ]]; then
-                    wait_partition_appear "${OSD_BS_DEV}"p2
-                    sgdisk --zap-all -- "${OSD_BS_DEV}"p2
-                else
-                    wait_partition_appear "${OSD_BS_DEV}"2
-                    sgdisk --zap-all -- "${OSD_BS_DEV}"2
-                fi
-            fi
-
-            if [ -n "${OSD_BS_WAL_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_WAL_DEV}" ] && [ -n "${OSD_BS_WAL_PARTNUM}" ]; then
-                if [[ "${OSD_BS_WAL_DEV}" =~ "/dev/loop" ]]; then
-                    sgdisk --zap-all -- "${OSD_BS_WAL_DEV}""p${OSD_BS_WAL_PARTNUM}"
-                else
-                    sgdisk --zap-all -- "${OSD_BS_WAL_DEV}""${OSD_BS_WAL_PARTNUM}"
-                fi
-            fi
-
-            if [ -n "${OSD_BS_DB_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_DB_DEV}" ] && [ -n "${OSD_BS_DB_PARTNUM}" ]; then
-                if [[ "${OSD_BS_DB_DEV}" =~ "/dev/loop" ]]; then
-                    sgdisk --zap-all -- "${OSD_BS_DB_DEV}""p${OSD_BS_DB_PARTNUM}"
-                else
-                    sgdisk --zap-all -- "${OSD_BS_DB_DEV}""${OSD_BS_DB_PARTNUM}"
-                fi
-            fi
-        else
-            sgdisk --zap-all -- "${OSD_DEV}"
-            sgdisk --new=2:1M:5G -- "${JOURNAL_DEV}"
-            sgdisk --largest-new=1 -- "${OSD_DEV}"
-        fi
-        # NOTE(SamYaple): This command may throw errors that we can safely ignore
-        partprobe || true
-
-    fi
-
     if [[ "${OSD_STORETYPE}" == "bluestore" ]]; then
-        OSD_UUID=$(uuidgen)
-        OSD_ID=$(ceph osd new "${OSD_UUID}")
+        if [[ "${USE_EXTERNAL_BLOCK}" == "False" ]]; then
+            OSD_BS_PARTUUID=$(uuidgen)
+            OSD_BS_BLK_PARTUUID=$(uuidgen)
+            sgdisk --zap-all -- "${OSD_BS_DEV}"
+            sgdisk --new=1:0:+100M --partition-guid=1:"${OSD_BS_PARTUUID}" --mbrtogpt -- "${OSD_BS_DEV}"
+            sgdisk --largest-new=2 --partition-guid=2:"${OSD_BS_BLK_PARTUUID}" --mbrtogpt -- "${OSD_BS_DEV}"
+            partprobe_device "${OSD_BS_DEV}"
+        fi
+
+        wait_partition_appear "${OSD_BS_PARTITION}"
+        sgdisk --zap-all -- "${OSD_BS_PARTITION}"
+
+        wait_partition_appear "${OSD_BS_BLK_PARTITION}"
+        sgdisk --zap-all -- "${OSD_BS_BLK_PARTITION}"
+
+        if [[ "${OSD_BS_PARTTYPE}" == "mpath" ]]; then
+            CEPH_OSD_TYPE_CODE="${MPATH_OSD_TYPE_CODE}"
+        else
+            CEPH_OSD_TYPE_CODE="${REGULAR_OSD_TYPE_CODE}"
+        fi
+
+        if [[ "${OSD_BS_BLK_PARTTYPE}" == "mpath" ]]; then
+            CEPH_OSD_BS_BLOCK_TYPE_CODE="${MPATH_OSD_BS_BLOCK_TYPE_CODE}"
+            BLOCK_LINK_PATH=/dev/disk/by-parttypeuuid
+            BLOCK_LINK_UUID="${CEPH_OSD_BS_BLOCK_TYPE_CODE}"."${OSD_BS_BLK_PARTUUID}"
+        else
+            CEPH_OSD_BS_BLOCK_TYPE_CODE="${REGULAR_OSD_BS_BLOCK_TYPE_CODE}"
+            BLOCK_LINK_PATH=/dev/disk/by-partuuid
+            BLOCK_LINK_UUID="${OSD_BS_BLK_PARTUUID}"
+        fi
+
+        if [[ -n "${OSD_BS_WAL_DEV}" && "${OSD_BS_BLK_DEV}" != "${OSD_BS_WAL_DEV}" && -n "${OSD_BS_WAL_PARTITION}" ]]; then
+            sgdisk --zap-all -- "${OSD_BS_WAL_PARTITION}"
+            CHECK_WAL_DEVICE="True"
+            if [[ "${OSD_BS_WAL_PARTTYPE}" == "mpath" ]]; then
+                CEPH_OSD_BS_WAL_TYPE_CODE="${MPATH_OSD_BS_WAL_TYPE_CODE}"
+                WAL_LINK_PATH=/dev/disk/by-parttypeuuid
+                WAL_LINK_UUID="${CEPH_OSD_BS_WAL_TYPE_CODE}"."${OSD_BS_WAL_PARTUUID}"
+            else
+                CEPH_OSD_BS_WAL_TYPE_CODE="${REGULAR_OSD_BS_WAL_TYPE_CODE}"
+                WAL_LINK_PATH=/dev/disk/by-partuuid
+                WAL_LINK_UUID="${OSD_BS_WAL_PARTUUID}"
+            fi
+        fi
+
+        if [[ -n "${OSD_BS_DB_DEV}" && "${OSD_BS_BLK_DEV}" != "${OSD_BS_DB_DEV}" && -n "${OSD_BS_DB_PARTITION}" ]]; then
+            sgdisk --zap-all -- "${OSD_BS_DB_PARTITION}"
+            CHECK_DB_DEVICE="True"
+            if [[ "${OSD_BS_DB_PARTTYPE}" == "mpath" ]]; then
+                CEPH_OSD_BS_DB_TYPE_CODE="${MPATH_OSD_BS_DB_TYPE_CODE}"
+                DB_LINK_PATH=/dev/disk/by-parttypeuuid
+                DB_LINK_UUID="${CEPH_OSD_BS_DB_TYPE_CODE}"."${OSD_BS_DB_PARTUUID}"
+            else
+                CEPH_OSD_BS_DB_TYPE_CODE="${REGULAR_OSD_BS_DB_TYPE_CODE}"
+                DB_LINK_PATH=/dev/disk/by-partuuid
+                DB_LINK_UUID="${OSD_BS_DB_PARTUUID}"
+            fi
+        fi
+
+        OSD_ID=$(ceph osd new "${OSD_BS_PARTUUID}")
         OSD_DIR="/var/lib/ceph/osd/ceph-${OSD_ID}"
         mkdir -p "${OSD_DIR}"
 
-        if [[ "${OSD_BS_DEV}" =~ "/dev/loop" ]]; then
-            mkfs.xfs -f "${OSD_BS_DEV}""p${OSD_BS_PARTNUM}"
-            mount "${OSD_BS_DEV}""p${OSD_BS_PARTNUM}" "${OSD_DIR}"
-        else
-            mkfs.xfs -f "${OSD_BS_DEV}""${OSD_BS_PARTNUM}"
-            mount "${OSD_BS_DEV}""${OSD_BS_PARTNUM}" "${OSD_DIR}"
-        fi
+        mkfs.xfs -f "${OSD_BS_PARTITION}"
+        mount "${OSD_BS_PARTITION}" "${OSD_DIR}"
 
-        # This will through an error about no key existing. That is normal. It then
-        # creates the key in the next step.
+        OSD_KEYRING=$(ceph-authtool --gen-print-key)
+        ceph-authtool "${OSD_DIR}/keyring" --create-keyring --name osd.${OSD_ID} --add-key "${OSD_KEYRING}"
+
         echo "bluestore" > "${OSD_DIR}"/type
 
-        if [[ "$(ceph --version)" =~ (luminous|mimic) ]]; then
-            ceph-osd -i "${OSD_ID}" --mkkey
-        else
-            ceph-osd -i "${OSD_ID}" --mkkey --no-mon-config
+        sgdisk "--change-name=${OSD_BS_BLK_PARTNUM}:KOLLA_CEPH_DATA_BS_${OSD_ID}_B" "--typecode=${OSD_BS_BLK_PARTNUM}:${CEPH_OSD_BS_BLOCK_TYPE_CODE}" -- "${OSD_BS_BLK_DEV}"
+        partprobe_device "${OSD_BS_BLK_DEV}"
+
+        if [[ "${CHECK_WAL_DEVICE}" == "True" && -n "${OSD_BS_WAL_PARTNUM}" ]]; then
+            sgdisk "--change-name=${OSD_BS_WAL_PARTNUM}:KOLLA_CEPH_DATA_BS_${OSD_ID}_W" "--typecode=${OSD_BS_WAL_PARTNUM}:${CEPH_OSD_BS_WAL_TYPE_CODE}" -- "${OSD_BS_WAL_DEV}"
+            partprobe_device "${OSD_BS_WAL_DEV}"
+            CHANGE_WAL_NAME="True"
         fi
 
-        if [ -n "${OSD_BS_BLK_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_DEV}" ] && [ -n "${OSD_BS_BLK_PARTNUM}" ]; then
-            sgdisk "--change-name="${OSD_BS_BLK_PARTNUM}":KOLLA_CEPH_DATA_BS_${OSD_ID}_B" "--typecode="${OSD_BS_BLK_PARTNUM}":${CEPH_OSD_TYPE_CODE}" -- "${OSD_BS_BLK_DEV}"
-        else
-            sgdisk "--change-name=2:KOLLA_CEPH_DATA_BS_${OSD_ID}_B" "--typecode=2:${CEPH_OSD_TYPE_CODE}" -- "${OSD_BS_DEV}"
+        if [[ "${CHECK_DB_DEVICE}" == "True" && -n "${OSD_BS_DB_PARTNUM}" ]]; then
+            sgdisk "--change-name=${OSD_BS_DB_PARTNUM}:KOLLA_CEPH_DATA_BS_${OSD_ID}_D" "--typecode=${OSD_BS_DB_PARTNUM}:${CEPH_OSD_BS_DB_TYPE_CODE}" -- "${OSD_BS_DB_DEV}"
+            partprobe_device "${OSD_BS_DB_DEV}"
+            CHANGE_DB_NAME="True"
         fi
 
-        if [ -n "${OSD_BS_WAL_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_WAL_DEV}" ] && [ -n "${OSD_BS_WAL_PARTNUM}" ]; then
-            sgdisk "--change-name="${OSD_BS_WAL_PARTNUM}":KOLLA_CEPH_DATA_BS_${OSD_ID}_W" "--typecode="${OSD_BS_WAL_PARTNUM}":${CEPH_OSD_BS_WAL_TYPE_CODE}" -- "${OSD_BS_WAL_DEV}"
+        wait_device_link_appear "${BLOCK_LINK_PATH}" "${BLOCK_LINK_UUID}" "${OSD_BS_BLK_PARTITION}"
+        ln -s "${BLOCK_LINK_PATH}"/"${BLOCK_LINK_UUID}" "${OSD_DIR}"/block
+
+        if [[ "${CHANGE_WAL_NAME}" == "True" ]]; then
+            wait_device_link_appear "${WAL_LINK_PATH}" "${WAL_LINK_UUID}" "${OSD_BS_WAL_PARTITION}"
+            ln -s "${WAL_LINK_PATH}"/"${WAL_LINK_UUID}" "${OSD_DIR}"/block.wal
         fi
 
-        if [ -n "${OSD_BS_DB_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_DB_DEV}" ] && [ -n "${OSD_BS_DB_PARTNUM}" ]; then
-            sgdisk "--change-name="${OSD_BS_DB_PARTNUM}":KOLLA_CEPH_DATA_BS_${OSD_ID}_D" "--typecode="${OSD_BS_DB_PARTNUM}":${CEPH_OSD_BS_DB_TYPE_CODE}" -- "${OSD_BS_DB_DEV}"
-        fi
-
-        partprobe || true
-
-        ln -sf /dev/disk/by-partlabel/KOLLA_CEPH_DATA_BS_"${OSD_ID}"_B "${OSD_DIR}"/block
-
-        if [ -n "${OSD_BS_WAL_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_WAL_DEV}" ] && [ -n "${OSD_BS_WAL_PARTNUM}" ]; then
-            ln -sf /dev/disk/by-partlabel/KOLLA_CEPH_DATA_BS_"${OSD_ID}"_W "${OSD_DIR}"/block.wal
-        fi
-
-        if [ -n "${OSD_BS_DB_DEV}" ] && [ "${OSD_BS_BLK_DEV}" != "${OSD_BS_DB_DEV}" ] && [ -n "${OSD_BS_DB_PARTNUM}" ]; then
-            ln -sf /dev/disk/by-partlabel/KOLLA_CEPH_DATA_BS_"${OSD_ID}"_D "${OSD_DIR}"/block.db
+        if [[ "${CHANGE_DB_NAME}" == "True" ]]; then
+            wait_device_link_appear "${DB_LINK_PATH}" "${DB_LINK_UUID}" "${OSD_BS_DB_PARTITION}"
+            ln -s "${DB_LINK_PATH}"/"${DB_LINK_UUID}" "${OSD_DIR}"/block.db
         fi
 
         if [[ "$(ceph --version)" =~ (luminous|mimic) ]]; then
-            ceph-osd -i "${OSD_ID}" --mkfs -k "${OSD_DIR}"/keyring --osd-uuid "${OSD_UUID}"
+            ceph-osd -i "${OSD_ID}" --mkfs -k "${OSD_DIR}"/keyring --osd-uuid "${OSD_BS_PARTUUID}"
         else
-            ceph-osd -i "${OSD_ID}" --mkfs -k "${OSD_DIR}"/keyring --osd-uuid "${OSD_UUID}" --no-mon-config
+            ceph-osd -i "${OSD_ID}" --mkfs -k "${OSD_DIR}"/keyring --osd-uuid "${OSD_BS_PARTUUID}" --no-mon-config
         fi
 
         ceph auth add "osd.${OSD_ID}" osd 'allow *' mon 'allow profile osd' -i "${OSD_DIR}/keyring"
 
-        if [[ "${OSD_BS_DEV}" =~ "/dev/loop" ]]; then
-            umount "${OSD_BS_DEV}""p${OSD_BS_PARTNUM}"
-        else
-            umount "${OSD_BS_DEV}""${OSD_BS_PARTNUM}"
-        fi
+        umount "${OSD_BS_PARTITION}"
+
+        WEIGHT_PARTITION="${OSD_BS_BLK_PARTITION}"
     else
+        CEPH_OSD_TYPE_CODE="${REGULAR_OSD_TYPE_CODE}"
+        CEPH_JOURNAL_TYPE_CODE="${REGULAR_JOURNAL_TYPE_CODE}"
+        if [[ "${USE_EXTERNAL_JOURNAL}" == "False" ]]; then
+            # Formatting disk for ceph
+            sgdisk --zap-all -- "${OSD_DEV}"
+            sgdisk --new=2:1M:5G -- "${JOURNAL_DEV}"
+            sgdisk --largest-new=1 -- "${OSD_DEV}"
+            # NOTE(SamYaple): This command may throw errors that we can safely ignore
+            partprobe || true
+        fi
+
         OSD_ID=$(ceph osd create)
         OSD_DIR="/var/lib/ceph/osd/ceph-${OSD_ID}"
         mkdir -p "${OSD_DIR}"
@@ -187,6 +225,8 @@ if [[ "${!KOLLA_BOOTSTRAP[@]}" ]]; then
 
         ceph auth add "osd.${OSD_ID}" osd 'allow *' mon 'allow profile osd' -i "${OSD_DIR}/keyring"
         umount "${OSD_PARTITION}"
+
+        WEIGHT_PARTITION=${OSD_PARTITION}
     fi
 
     if [[ "${!CEPH_CACHE[@]}" ]]; then
@@ -194,7 +234,9 @@ if [[ "${!KOLLA_BOOTSTRAP[@]}" ]]; then
     fi
 
     if [[ "${OSD_INITIAL_WEIGHT}" == "auto" ]]; then
-        OSD_INITIAL_WEIGHT=$(parted --script ${OSD_PARTITION} unit TB print | awk 'match($0, /^Disk.* (.*)TB/, a){printf("%.2f", a[1])}')
+        # Because the block partition is a raw device, there is no disk label.
+        # When this command is executed, an error is reported, so add "|| true" to ignore errors
+        OSD_INITIAL_WEIGHT=$(parted --script ${WEIGHT_PARTITION} unit TB print | awk 'match($0, /^Disk.* (.*)TB/, a){printf("%.2f", a[1])}' || true )
     fi
 
     # These commands only need to be run once per host but are safe to run
@@ -211,7 +253,8 @@ if [[ "${!KOLLA_BOOTSTRAP[@]}" ]]; then
 
     # Setting partition name based on ${OSD_ID}
     if [[ "${OSD_STORETYPE}" == "bluestore" ]]; then
-        sgdisk "--change-name=${OSD_PARTITION_NUM}:KOLLA_CEPH_DATA_BS_${OSD_ID}" "--typecode=${OSD_PARTITION_NUM}:${CEPH_OSD_TYPE_CODE}" -- "${OSD_BS_DEV}"
+        sgdisk "--change-name=${OSD_BS_PARTNUM}:KOLLA_CEPH_DATA_BS_${OSD_ID}" "--typecode=${OSD_BS_PARTNUM}:${CEPH_OSD_TYPE_CODE}" -- "${OSD_BS_DEV}"
+        trigger_part_uuid "${OSD_BS_PARTITION}"
     else
         sgdisk "--change-name=${OSD_PARTITION_NUM}:KOLLA_CEPH_DATA_${OSD_ID}" "--typecode=${OSD_PARTITION_NUM}:${CEPH_OSD_TYPE_CODE}" -- "${OSD_DEV}"
         sgdisk "--change-name=${JOURNAL_PARTITION_NUM}:KOLLA_CEPH_DATA_${OSD_ID}_J" "--typecode=${JOURNAL_PARTITION_NUM}:${CEPH_JOURNAL_TYPE_CODE}" -- "${JOURNAL_DEV}"
