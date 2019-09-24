@@ -117,8 +117,9 @@ ceph_osd_filesystem: "xfs"
 ceph_osd_wipe_disk: ""
 
 # These are /etc/fstab options. Comma separated, no spaces (see fstab(8))
-ceph_osd_mount_options: "defaults,noatime"
+ceph_regular_mount_options: "defaults,noatime"
 ceph_iscsi_mount_options: "defaults,_netdev,noatime"
+ceph_tmpfs_mount_options: "nodev,nosuid"
 
 # A requirement for using the erasure-coded pools is you must setup a cache tier
 # Valid options are [ erasure, replicated ]

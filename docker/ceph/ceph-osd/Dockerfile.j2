@@ -4,7 +4,9 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
 {% block ceph_osd_header %}{% endblock %}
 
 COPY extend_start.sh /usr/local/bin/kolla_extend_start
-RUN chmod 755 /usr/local/bin/kolla_extend_start
+RUN chmod 755 /usr/local/bin/kolla_extend_start \
+    && sed -i "s/\(^[[:space:]]*udev_sync = \)[0-9].*/\10/g" /etc/lvm/lvm.conf \
+    && sed -i "s/\(^[[:space:]]*udev_rules = \)[0-9].*/\10/g" /etc/lvm/lvm.conf
 
 {% block ceph_osd_footer %}{% endblock %}
 {% block footer %}{% endblock %}

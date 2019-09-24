@@ -3,7 +3,7 @@
   become: true
   command: docker exec -t kolla_toolbox sudo -E ansible localhost
     -m find_disks
-    -a "partition_name={{ partition_name_osd_data }} match_mode='prefix' use_udev={{ kolla_ceph_use_udev }}"
+    -a "partition_name='KOLLA_CEPH_DATA' match_mode='prefix' use_udev={{ kolla_ceph_use_udev }}"
   register: osd_lookup
   changed_when: osd_lookup.stdout.find('localhost | SUCCESS => ') != -1 and (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).changed
   failed_when: osd_lookup.stdout.split()[2] != 'SUCCESS'
@@ -12,30 +12,69 @@
   set_fact:
     osds: "{{ (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).disks|from_json }}"
 
-- name: Mounting Ceph OSD volumes
+- name: Filter DISK type osd
+  set_fact:
+    osds_disk: "{{ osds_disk | default([]) | union([ item ]) }}"
+  with_items: "{{ osds }}"
+  no_log: True
+  when: item.osd_disk_mode == "DISK"
+
+- name: Filter LVM type osd
+  set_fact:
+    osds_lvm: "{{ osds_lvm | default([]) | union([ item ]) }}"
+  with_items: "{{ osds }}"
+  no_log: True
+  when: item.osd_disk_mode == "LVM"
+
+- name: Mounting Ceph OSD volumes for DISK
   become: true
   mount:
-    src: "UUID={{ item.fs_uuid }}"
+    src: "UUID={{ item.osd_fs_uuid }}"
     fstype: "{{ ceph_osd_filesystem }}"
     state: mounted
-    name: "/var/lib/ceph/osd/{{ item['fs_uuid'] }}"
-    opts: "{{ ceph_osd_mount_options if item.partition_type | default('regular') == 'regular' else ceph_iscsi_mount_options }}"
-  with_items: "{{ osds }}"
-  become_method: sudo
+    name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
+    opts: "{{ ceph_regular_mount_options if item.partition_type | default('regular') == 'regular' else ceph_iscsi_mount_options }}"
+  with_items: "{{ osds_disk | default([]) }}"
 
-- name: Gathering OSD IDs
+- name: Mounting Ceph OSD volumes for LVM filestore
   become: true
-  command: "cat /var/lib/ceph/osd/{{ item['fs_uuid'] }}/whoami"
-  with_items: "{{ osds }}"
-  register: id
+  mount:
+    src: "{{ item.osd_data_osd }}"
+    fstype: "{{ ceph_osd_filesystem }}"
+    state: mounted
+    name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
+    opts: "{{ ceph_tmpfs_mount_options }}"
+  with_items: "{{ osds_lvm | default([]) }}"
+  when: item.osd_store_type == "filestore"
+
+- name: Mounting Ceph OSD volumes for LVM bluestore
+  become: true
+  mount:
+    src: "tmpfs"
+    fstype: "tmpfs"
+    state: mounted
+    name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
+    opts: "{{ ceph_tmpfs_mount_options }}"
+  with_items: "{{ osds_lvm | default([]) }}"
+  when: item.osd_store_type == "bluestore"
+
+- name: Gathering OSD IDs for DISK
+  become: true
+  command: "cat /var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}/whoami"
+  with_items: "{{ osds_disk | default([]) }}"
+  register: osd_id_disk
   changed_when: False
-  failed_when: id.rc != 0
+  failed_when: osd_id_disk.rc != 0
 
 - include: start_disk_osd.yml
   vars:
     osd_id: "{{ item.0 }}"
     osd_disk: "{{ item.1 }}"
   with_together:
-    - "{{ id.results }}"
-    - "{{ osds }}"
-  when: osds
+    - "{{ osd_id_disk.results }}"
+    - "{{ osds_disk | default([]) }}"
+
+- include: start_lvm_osd.yml
+  vars:
+    osd_disk: "{{ item }}"
+  with_items: "{{ osds_lvm | default([]) }}"

@@ -198,7 +198,16 @@ nfss
 
 In kolla-ceph, all osd disks need to be labeled. The same osd disk prefix is the same, different suffixes represent different disk usage.
 
-#### bluestore
+There are two common deployment methods for ceph osd:
+1. One way is ceph-disk, which is also the earliest way to deploy ceph osd, it is used in the kolla-ceph corresponds to the DISK mode.
+2. The latest deployment method is ceph-volume, and the method used corresponds to LVM mode in kolla-ceph.
+
+The DISK method requires an additional osd data partition to store the data needed for osd startup.
+The LVM mode does not require additional data partitions. The boot data is written to the lvm volume label. When booting, the tmpfs volume is mounted as the partition of the osd data.
+
+#### DISK MODE
+
+##### bluestore
 
 - Disk name description
 
@@ -210,6 +219,7 @@ KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1_B
 KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1_D
 KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1_W
 KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1
+KOLLA_CEPH_OSD_BOOTSTRAP_BS(Represents an osd, no extra disks)
 
 The following are the different meanings of the suffix.
 (B) : OSD Block Partition
@@ -238,7 +248,7 @@ sudo /sbin/parted /dev/sdc -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BS_
 sudo /sbin/parted /dev/sdd -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1_W 1 2000
 ```
 
-#### Filestore
+##### Filestore
 
 - Disk name description
 
@@ -247,7 +257,8 @@ KOLLA_CEPH_OSD_BOOTSTRAP_${OSD_NAME}_${OSD_DISK_SUFFIXES}
 
 Examples:
 KOLLA_CEPH_OSD_BOOTSTRAP_FOO1_J
-KOLLA_CEPH_OSD_BOOTSTRAP_BS_FOO1
+KOLLA_CEPH_OSD_BOOTSTRAP_FOO1
+KOLLA_CEPH_OSD_BOOTSTRAP(Represents an osd, no extra disks)
 
 The following are the different meanings of the suffix.
 (J) : OSD Journal Partition
@@ -268,6 +279,82 @@ sudo /sbin/parted  /dev/sdb  -s  -- mklabel  gpt  mkpart KOLLA_CEPH_OSD_BOOTSTRA
 # Customize multiple partitions
 parted  /dev/sdb -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_FOO1  1  -1
 parted  /dev/sdc -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_FOO1_J  1  5000
+```
+
+#### LVM MODE
+
+##### bluestore
+
+- Disk name description
+
+```
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL_${OSD_NAME}_${OSD_DISK_SUFFIXES}
+
+Examples:
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_B
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_D
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_W
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1
+KOLLA_CEPH_OSD_BOOTSTRAP_BSL(Represents an osd, no extra disks)
+
+The following are the different meanings of the suffix.
+(B) : OSD Block Partition
+(D) : OSD DB Partition
+(W) : OSD WAL Partition
+(null) : In lvm mode, no additional osd data partition is needed,
+so the entire osd disk will be used as a block partition.
+```
+
+- how to preapare disk
+
+```
+sudo sgdisk --zap-all -- /dev/sdb
+sudo sgdisk --zap-all -- /dev/sdc
+sudo sgdisk --zap-all -- /dev/sdd
+
+# Use the entire disk, including the block partition
+sudo /sbin/parted  /dev/sdb  -s  -- mklabel  gpt  mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1  1 -1
+
+# Customize multiple partitions
+sudo /sbin/parted /dev/sdb -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1 1 100%
+or
+sudo /sbin/parted /dev/sdb -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_B 1 100%
+
+sudo /sbin/parted /dev/sdc -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_D 1 2000
+sudo /sbin/parted /dev/sdd -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_BSL_FOO1_W 1 2000
+```
+
+##### Filestore
+
+- Disk name description
+
+```
+KOLLA_CEPH_OSD_BOOTSTRAP_L_${OSD_NAME}_${OSD_DISK_SUFFIXES}
+
+Examples:
+KOLLA_CEPH_OSD_BOOTSTRAP_L_FOO1_J
+KOLLA_CEPH_OSD_BOOTSTRAP_L_FOO1
+KOLLA_CEPH_OSD_BOOTSTRAP_L(Represents an osd, no extra disks)
+The following are the different meanings of the suffix.
+(J) : OSD Journal Partition
+(null) : If there is a separate Journal partition, then this partition only
+represents osd data, otherwise it represents 5G Journal partition and the rest
+will be used as a data partition. Unlike disk mode, lvm mode converts osd data
+partition into lvm volume.
+```
+
+- how to preapare disk
+
+```
+sudo sgdisk --zap-all -- /dev/sdb
+sudo sgdisk --zap-all -- /dev/sdc
+
+# Use the entire disk, including the osd data partition and the journal partition
+sudo /sbin/parted  /dev/sdb  -s  -- mklabel  gpt  mkpart KOLLA_CEPH_OSD_BOOTSTRAP_L_FOO1  1 -1
+
+# Customize multiple partitions
+parted  /dev/sdb -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_L_FOO1  1  -1
+parted  /dev/sdc -s -- mklabel gpt mkpart KOLLA_CEPH_OSD_BOOTSTRAP_L_FOO1_J  1  5000
 ```
 
 ### Deploy a ceph cluster
@@ -302,7 +389,7 @@ Commands:
 sh manage.sh deploy --cluster test --image nautilus.0001
 ```
 
-- You can also deploy only one service or a few, such as following:
+- You can also deploy only one daemon or a few, such as following:
 
 ```
 sh manage.sh deploy --cluster test --image nautilus.0001 --daemon ceph-osd
@@ -312,7 +399,7 @@ sh manage.sh deploy --cluster test --image nautilus.0001 --daemon ceph-osd,ceph-
 
 ``Note: "--daemon" Recommended for maintenance of existing clusters``
 
-- You can modify a service on a node, such as repairing a damaged osd on a node.
+- You can modify a daemon on a node, such as repairing a damaged osd on a node.
 
 ```
 sh manage.sh deploy --cluster test --image nautilus.0001 --daemon ceph-osd --limit ceph-node3
@@ -336,9 +423,11 @@ sample:
 - no serial(This method has been banned in the manage.sh script):
 
 ```
-   Start-->ceph-node1-->mon-->mgr-->osd-->rgw-->mds-->End
-   Start-->ceph-node2-->mon-->mgr-->osd-->rgw-->End
-   Start-->ceph-node3-->osd-->mds-->End
+   Start-->ceph-node1-->|mon -->|mgr -->|osd-->|rgw -->|mds -->End
+   Start-->ceph-node2-->|mon -->|mgr -->|osd-->|rgw -->|skip-->End
+   Start-->ceph-node3-->|skip-->|skip-->|osd-->|skip-->|mds -->End
+                        |       |       |      |       |
+                    same time   ..      ..     ..      ..
 ```
 
 - serial is 1(This method is also not recommended):
@@ -380,7 +469,9 @@ We don't want to upgrade like this, the best way is to upgrade all mons first, t
    Start-->ceph-node1
                      |-->mgr-->osd.1-->osd.2-->mds--> NEXT NODE
            ceph-node2
-                     |->mgr-->osd.3-->osd.4-->mds--> End
+                     |->mgr-->osd.3-->osd.4--> NEXT NODE
+           ceph-node3
+                     |->osd.5-->osd.6-->mds--> End        
 ```
 ``Note: 1. Mon has mandatory requirements, and all mons need to be upgraded before upgrading other daemons. 2. The specified ceph daemon function can be used with the --limit function. By default, manage.sh restricts the task to
  only execute on the node where the daemon is located. You can specify the limit node instead of the default node.``

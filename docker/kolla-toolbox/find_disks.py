@@ -24,6 +24,7 @@ import re
 import subprocess  # nosec
 
 from ansible.module_utils.basic import AnsibleModule
+from ceph_volume.api import lvm as api
 
 DOCUMENTATION = '''
 ---
@@ -66,30 +67,7 @@ EXAMPLES = '''
       find_disks:
           name: 'KOLLA_CEPH_OSD'
       register: osds
-
-- hosts: swift-object-server
-  tasks:
-    - name: Return all valid devices with the name KOLLA_SWIFT
-      find_disks:
-          name: 'KOLLA_SWIFT'
-      register: swift_disks
-
-- hosts: swift-object-server
-  tasks:
-    - name: Return all valid devices with wildcard name 'swift_d*'
-      find_disks:
-          name: 'swift_d' match_mode: 'prefix'
-      register: swift_disks
 '''
-
-
-PREFERRED_DEVICE_LINK_ORDER = [
-    '/dev/disk/by-uuid',
-    '/dev/disk/by-partuuid',
-    '/dev/disk/by-parttypeuuid',
-    '/dev/disk/by-label',
-    '/dev/disk/by-partlabel'
-]
 
 CEPH_MPATH_LIST = list()
 
@@ -197,7 +175,7 @@ def get_mapper_parent(ct, mapper_path):
 def is_dev_matched_by_name(dev, name, mode, use_udev):
     if dev.get('DEVTYPE', '') == 'partition':
         dev_name = get_id_part_entry_name(dev, use_udev)
-    elif 'CEPH' in name and '_BS' in name and is_mapper_device(dev):
+    elif is_mapper_device(dev):
         dev_name = get_part_label_for_mpath(dev, use_udev)
     else:
         dev_name = dev.get('ID_FS_LABEL', '')
@@ -216,52 +194,7 @@ def find_disk(ct, name, match_mode, use_udev):
             yield dev
 
 
-def get_device_link(dev):
-    for preferred_link in PREFERRED_DEVICE_LINK_ORDER:
-        for link in dev.device_links:
-            if link.startswith(preferred_link):
-                return link
-    return dev.device_node
-
-
-def extract_disk_info(ct, dev, name, use_udev):
-    if not dev:
-        return
-    kwargs = dict()
-    kwargs['fs_uuid'] = get_id_fs_uuid(dev, use_udev)
-    kwargs['fs_label'] = dev.get('ID_FS_LABEL', '')
-    if dev.get('DEVTYPE', '') == 'partition':
-        kwargs['partition_label'] = name
-        kwargs['device'] = dev.find_parent('block').device_node
-        kwargs['partition'] = dev.device_node
-        kwargs['partition_num'] = re.sub(r'.*[^\d]', '', dev.device_node)
-        if is_dev_matched_by_name(dev, name, 'strict', use_udev):
-            kwargs['external_journal'] = False
-            # NOTE(jeffrey4l): this is only used for bootstrap osd stage and
-            # there is no journal partion at all. So it is OK to use
-            # device_node directly.
-            kwargs['journal'] = dev.device_node[:-1] + '2'
-            kwargs['journal_device'] = kwargs['device']
-            kwargs['journal_num'] = 2
-        else:
-            kwargs['external_journal'] = True
-            journal_name = get_id_part_entry_name(dev, use_udev) + '_J'
-            for journal in find_disk(ct, journal_name, 'strict', use_udev):
-                kwargs['journal'] = get_device_link(journal)
-                kwargs['journal_device'] = \
-                    journal.find_parent('block').device_node
-                kwargs['journal_num'] = \
-                    re.sub(r'.*[^\d]', '', journal.device_node)
-                break
-            if 'journal' not in kwargs:
-                # NOTE(SamYaple): Journal not found, not returning info
-                return
-    else:
-        kwargs['device'] = dev.device_node
-    yield kwargs
-
-
-def extract_disk_info_bs(ct, dev, name, use_udev):
+def extract_disk_info_ceph(ct, dev, name, use_udev):
     if not dev:
         return
     kwargs = dict()
@@ -289,72 +222,53 @@ def extract_disk_info_bs(ct, dev, name, use_udev):
     else:
         return
 
-    if ('BOOTSTRAP_BS' in name or 'DATA_BS' in name) and name in actual_name:
+    if name in actual_name:
+        kwargs['partition'] = dev_partition
+        kwargs['partition_num'] = re.sub(r'.*[^\d]', '', dev_partition)
+        kwargs['device'] = dev_parent
+        kwargs['partition_label'] = actual_name
+        kwargs['partition_uuid'] = get_id_part_uuid(dev, use_udev)
+        kwargs['partition_type'] = dev_type
+
         if actual_name.endswith("_B"):
             kwargs['partition_usage'] = 'block'
-            kwargs['bs_blk_partition'] = dev_partition
-            kwargs['bs_blk_partition_num'] = \
-                re.sub(r'.*[^\d]', '', dev_partition)
-            kwargs['bs_blk_device'] = dev_parent
-            kwargs['bs_blk_label'] = actual_name
-            kwargs['bs_blk_partition_uuid'] = \
-                get_id_part_uuid(dev, use_udev)
-            kwargs['bs_blk_partition_type'] = dev_type
             return kwargs
+
         if actual_name.endswith("_D"):
             kwargs['partition_usage'] = 'block.db'
-            kwargs['bs_db_partition'] = dev_partition
-            kwargs['bs_db_partition_num'] = \
-                re.sub(r'.*[^\d]', '', dev_partition)
-            kwargs['bs_db_device'] = dev_parent
-            kwargs['bs_db_label'] = actual_name
-            kwargs['bs_db_partition_uuid'] = \
-                get_id_part_uuid(dev, use_udev)
-            kwargs['bs_db_partition_type'] = dev_type
             return kwargs
+
         if actual_name.endswith("_W"):
             kwargs['partition_usage'] = 'block.wal'
-            kwargs['bs_wal_partition'] = dev_partition
-            kwargs['bs_wal_partition_num'] = \
-                re.sub(r'.*[^\d]', '', dev_partition)
-            kwargs['bs_wal_device'] = dev_parent
-            kwargs['bs_wal_label'] = actual_name
-            kwargs['bs_wal_partition_uuid'] = \
-                get_id_part_uuid(dev, use_udev)
-            kwargs['bs_wal_partition_type'] = dev_type
             return kwargs
-        if '_BS' in actual_name:
-            kwargs['partition_usage'] = 'osd'
-            kwargs['partition'] = dev_partition
-            kwargs['partition_label'] = actual_name
-            kwargs['partition_num'] = \
-                re.sub(r'.*[^\d]', '', dev_partition)
-            kwargs['partition_uuid'] = \
-                get_id_part_uuid(dev, use_udev)
-            kwargs['partition_type'] = dev_type
-            kwargs['device'] = dev_parent
+
+        if actual_name.endswith("_J"):
+            kwargs['partition_usage'] = 'journal'
             return kwargs
-    return 0
+
+        kwargs['partition_usage'] = 'osd'
+        if 'BOOTSTRAP_BS' in actual_name or 'DATA_BS' in actual_name:
+            kwargs['store_type'] = 'bluestore'
+        else:
+            kwargs['store_type'] = 'filestore'
+
+        if 'BOOTSTRAP_BSL' in actual_name or \
+                'DATA_BSL' in actual_name or \
+                'BOOTSTRAP_L' in actual_name or \
+                'DATA_L' in actual_name:
+            kwargs['disk_mode'] = 'LVM'
+            return kwargs
+        else:
+            kwargs['disk_mode'] = 'DISK'
+            return kwargs
+    return
 
 
 def filter_mpath_subdisk(disks):
     result = list()
     for item in disks:
-        if (item['partition_usage'] == 'osd' and
-                item['partition_type'] != 'mpath' and
+        if (item['partition_type'] != 'mpath' and
                 item['partition_label'] in CEPH_MPATH_LIST):
-            continue
-        if (item['partition_usage'] == 'block' and
-                item['bs_blk_partition_type'] != 'mpath' and
-                item['bs_blk_label'] in CEPH_MPATH_LIST):
-            continue
-        if (item['partition_usage'] == 'block.db' and
-                item['bs_db_partition_type'] != 'mpath' and
-                item['bs_db_label'] in CEPH_MPATH_LIST):
-            continue
-        if (item['partition_usage'] == 'block.wal' and
-                item['bs_wal_partition_type'] != 'mpath' and
-                item['bs_wal_label'] in CEPH_MPATH_LIST):
             continue
         result.append(item)
     return result
@@ -362,14 +276,98 @@ def filter_mpath_subdisk(disks):
 
 def nb_of_osd(disks):
     osd_info = dict()
-    osd_info['block_label'] = list()
+    osd_info['label'] = list()
     nb_of_osds = 0
     for item in disks:
         if item['partition_usage'] == 'osd':
-            osd_info['block_label'].append(item['partition_label'])
+            osd_info['label'].append(item['partition_label'])
             nb_of_osds += 1
     osd_info['nb_of_osd'] = nb_of_osds
     return osd_info
+
+
+def get_lvm_osd_info(final):
+    pv = api.get_pv(pv_name=final['osd_partition'])
+    if not pv:
+        return
+
+    lv = api.get_lv(vg_name=pv.vg_name)
+    if lv:
+        final['osd_data_block'] = lv.tags.get('ceph.block_device', '')
+        final['osd_data_wal'] = lv.tags.get('ceph.wal_device', '')
+        final['osd_data_db'] = lv.tags.get('ceph.db_device', '')
+        final['osd_data_osd'] = lv.tags.get('ceph.data_device', '')
+        final['osd_data_id'] = lv.tags.get('ceph.osd_id', '')
+
+
+def final_bluestore(disks, idx_osd, idx_blk, idx_wal, idx_db, final):
+    if disks[idx_osd]['disk_mode'] == 'DISK':
+        if idx_blk != -1:
+            final['blk_device'] = disks[idx_blk]['device']
+            final['blk_partition'] = disks[idx_blk]['partition']
+            final['blk_partition_num'] = disks[idx_blk]['partition_num']
+            final['blk_partition_uuid'] = disks[idx_blk]['partition_uuid']
+            final['blk_partition_type'] = disks[idx_blk]['partition_type']
+            disks[idx_blk]['partition_usage'] = ''
+            final['external_journal_or_block'] = True
+        else:
+            # If no block partition was found, then kolla will automatically
+            # initialize the entire disk, so make sure the partition_num is 1
+            if int(disks[idx_osd]['partition_num']) != 1:
+                return
+
+            final['blk_device'] = disks[idx_osd]['device']
+            final['blk_partition'] = disks[idx_osd]['partition'][:-1] + '2'
+            final['blk_partition_num'] = 2
+            final['blk_partition_type'] = disks[idx_osd]['partition_type']
+            final['external_journal_or_block'] = False
+    else:
+        final['blk_device'] = disks[idx_osd]['device']
+        final['blk_partition'] = disks[idx_osd]['partition']
+        final['blk_partition_num'] = disks[idx_osd]['partition_num']
+        final['blk_partition_uuid'] = disks[idx_osd]['partition_uuid']
+        final['blk_partition_type'] = disks[idx_osd]['partition_type']
+        final['external_journal_or_block'] = False
+
+    if idx_wal != -1:
+        final['wal_device'] = disks[idx_wal]['device']
+        final['wal_partition'] = disks[idx_wal]['partition']
+        final['wal_partition_num'] = disks[idx_wal]['partition_num']
+        final['wal_partition_uuid'] = disks[idx_wal]['partition_uuid']
+        final['wal_partition_type'] = disks[idx_wal]['partition_type']
+        disks[idx_wal]['partition_usage'] = ''
+
+    if idx_db != -1:
+        final['db_device'] = disks[idx_db]['device']
+        final['db_partition'] = disks[idx_db]['partition']
+        final['db_partition_num'] = disks[idx_db]['partition_num']
+        final['db_partition_uuid'] = disks[idx_db]['partition_uuid']
+        final['db_partition_type'] = disks[idx_db]['partition_type']
+        disks[idx_db]['partition_usage'] = ''
+
+    return True
+
+
+def final_filestore(disks, idx_osd, idx_jnl, final):
+    if idx_jnl != -1:
+        final['journal_device'] = disks[idx_jnl]['device']
+        final['journal_partition'] = disks[idx_jnl]['partition']
+        final['journal_partition_num'] = disks[idx_jnl]['partition_num']
+        final['journal_partition_uuid'] = disks[idx_jnl]['partition_uuid']
+        final['journal_partition_type'] = disks[idx_jnl]['partition_type']
+        disks[idx_jnl]['partition_usage'] = ''
+        final['external_journal_or_block'] = True
+    else:
+        if int(disks[idx_osd]['partition_num']) != 1:
+            return
+
+        final['journal_device'] = disks[idx_osd]['device']
+        final['journal_partition'] = disks[idx_osd]['partition'][:-1] + '2'
+        final['journal_partition_num'] = 2
+        final['journal_partition_type'] = disks[idx_osd]['partition_type']
+        final['external_journal_or_block'] = False
+
+    return True
 
 
 def combine_info(disks):
@@ -378,81 +376,48 @@ def combine_info(disks):
     for osd_id in range(osds['nb_of_osd']):
         final = dict()
         idx = 0
-        idx_osd = idx_blk = idx_wal = idx_db = -1
+        idx_osd = idx_blk = idx_wal = idx_db = idx_jnl = -1
         for item in disks:
             if (item['partition_usage'] == 'osd' and
-                    item['partition_label'] == osds['block_label'][osd_id]):
+                    item['partition_label'] == osds['label'][osd_id]):
                 idx_osd = idx
             elif (item['partition_usage'] == 'block' and
-                    item['bs_blk_label'] ==
-                    osds['block_label'][osd_id] + "_B"):
+                    item['partition_label'] == osds['label'][osd_id] + "_B"):
                 idx_blk = idx
             elif (item['partition_usage'] == 'block.wal' and
-                    item['bs_wal_label'] ==
-                    osds['block_label'][osd_id] + "_W"):
+                    item['partition_label'] == osds['label'][osd_id] + "_W"):
                 idx_wal = idx
             elif (item['partition_usage'] == 'block.db' and
-                    item['bs_db_label'] ==
-                    osds['block_label'][osd_id] + "_D"):
+                    item['partition_label'] == osds['label'][osd_id] + "_D"):
                 idx_db = idx
+            elif (item['partition_usage'] == 'journal' and
+                    item['partition_label'] == osds['label'][osd_id] + "_J"):
+                idx_jnl = idx
             idx += 1
 
-        if idx_blk != -1:
-            final['bs_blk_device'] = disks[idx_blk]['bs_blk_device']
-            final['bs_blk_partition'] = disks[idx_blk]['bs_blk_partition']
-            final['bs_blk_partition_num'] = \
-                disks[idx_blk]['bs_blk_partition_num']
-            final['bs_blk_partition_uuid'] = \
-                disks[idx_blk]['bs_blk_partition_uuid']
-            final['bs_blk_partition_type'] = \
-                disks[idx_blk]['bs_blk_partition_type']
-            disks[idx_blk]['partition_usage'] = ''
-            final['external_block'] = True
+        if disks[idx_osd]['store_type'] == "bluestore":
+            ret = final_bluestore(disks, idx_osd, idx_blk, idx_wal, idx_db, final)
         else:
-            # If no block partition was found, then kolla will automatically
-            # initialize the entire disk, so make sure the partition_num is 1
-            if int(disks[idx_osd]['partition_num']) != 1:
-                continue
+            ret = final_filestore(disks, idx_osd, idx_jnl, final)
 
-            final['bs_blk_device'] = disks[idx_osd]['device']
-            final['bs_blk_partition'] = disks[idx_osd]['partition'][:-1] + '2'
-            final['bs_blk_partition_num'] = 2
-            final['bs_blk_partition_type'] = \
-                disks[idx_osd]['partition_type']
-            final['external_block'] = False
+        if not ret:
+            continue
 
-        if idx_wal != -1:
-            final['bs_wal_device'] = disks[idx_wal]['bs_wal_device']
-            final['bs_wal_partition'] = disks[idx_wal]['bs_wal_partition']
-            final['bs_wal_partition_num'] = \
-                disks[idx_wal]['bs_wal_partition_num']
-            final['bs_wal_partition_uuid'] = \
-                disks[idx_wal]['bs_wal_partition_uuid']
-            final['bs_wal_partition_type'] = \
-                disks[idx_wal]['bs_wal_partition_type']
-            disks[idx_wal]['partition_usage'] = ''
+        final['osd_fs_uuid'] = disks[idx_osd]['fs_uuid']
+        final['osd_fs_label'] = disks[idx_osd]['fs_label']
+        final['osd_device'] = disks[idx_osd]['device']
+        final['osd_partition'] = disks[idx_osd]['partition']
+        final['osd_partition_num'] = disks[idx_osd]['partition_num']
+        final['osd_partition_uuid'] = disks[idx_osd]['partition_uuid']
+        final['osd_partition_type'] = disks[idx_osd]['partition_type']
+        final['osd_disk_mode'] = disks[idx_osd]['disk_mode']
+        final['osd_store_type'] = disks[idx_osd]['store_type']
 
-        if idx_db != -1:
-            final['bs_db_device'] = disks[idx_db]['bs_db_device']
-            final['bs_db_partition'] = disks[idx_db]['bs_db_partition']
-            final['bs_db_partition_num'] = \
-                disks[idx_db]['bs_db_partition_num']
-            final['bs_db_partition_uuid'] = \
-                disks[idx_db]['bs_db_partition_uuid']
-            final['bs_db_partition_type'] = \
-                disks[idx_db]['bs_db_partition_type']
-            disks[idx_db]['partition_usage'] = ''
+        if final['osd_disk_mode'] == 'LVM':
+            get_lvm_osd_info(final)
 
-        final['fs_uuid'] = disks[idx_osd]['fs_uuid']
-        final['fs_label'] = disks[idx_osd]['fs_label']
-        final['device'] = disks[idx_osd]['device']
-        final['partition'] = disks[idx_osd]['partition']
-        final['partition_num'] = disks[idx_osd]['partition_num']
-        final['partition_uuid'] = disks[idx_osd]['partition_uuid']
-        final['partition_type'] = disks[idx_osd]['partition_type']
-
-        info.append(final)
         disks[idx_osd]['partition_usage'] = ''
+        info.append(final)
 
     return info
 
@@ -468,21 +433,19 @@ def main():
     match_mode = module.params.get('match_mode')
     name = module.params.get('name')
     use_udev = module.params.get('use_udev')
+    # This script is only used to collect ceph disk information.
+    if 'KOLLA_CEPH_' not in name:
+        return
 
     try:
         ret = list()
         ct = pyudev.Context()
         for dev in find_disk(ct, name, match_mode, use_udev):
-            if '_BS' in name:
-                info = extract_disk_info_bs(ct, dev, name, use_udev)
-                if info:
-                    ret.append(info)
-            else:
-                for info in extract_disk_info(ct, dev, name, use_udev):
-                    if info:
-                        ret.append(info)
+            info = extract_disk_info_ceph(ct, dev, name, use_udev)
+            if info:
+                ret.append(info)
 
-        if '_BS' in name and len(ret) > 0:
+        if len(ret) > 0:
             if len(CEPH_MPATH_LIST) > 0:
                 ret = filter_mpath_subdisk(ret)
             ret = combine_info(ret)

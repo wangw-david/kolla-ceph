@@ -18,7 +18,7 @@
   changed_when: False
   when: ceph_action == "upgrade"
 
-- name: Starting ceph-osd-{{ osd_id.stdout }} container for DISK mode
+- name: Starting ceph-osd-{{ osd_disk.osd_data_id }} container for LVM mode
   become: true
   kolla_docker:
     action: "start_container"
@@ -26,16 +26,15 @@
     environment:
       OSD_START: ""
       KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
-      OSD_ID: "{{ osd_id.stdout }}"
+      OSD_ID: "{{ osd_disk.osd_data_id }}"
       OSD_STORE_TYPE: "{{ osd_disk.osd_store_type }}"
       OSD_DISK_MODE: "{{ osd_disk.osd_disk_mode }}"
-      OSD_BLOCK: "{{ osd_disk.osd_block | default('') }}"
-      OSD_WAL: "{{ osd_disk.osd_wal | default('') }}"
-      OSD_DB: "{{ osd_disk.osd_db | default('') }}"
-      JOURNAL_PARTITION: "{{ osd_disk.journal | default('') }}"
+      OSD_BLOCK: "{{ osd_disk.osd_data_block }}"
+      OSD_WAL: "{{ osd_disk.osd_data_wal | default('') }}"
+      OSD_DB: "{{ osd_disk.osd_data_db | default('') }}"
       TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES: "{{ ceph_tcmalloc_tc_bytes }}"
     image: "{{ ceph_osd_image_full }}"
-    name: "ceph_osd_{{ osd_id.stdout }}"
+    name: "ceph_osd_{{ osd_disk.osd_data_id }}"
     pid_mode: "host"
     privileged: True
     volumes:
@@ -43,7 +42,7 @@
       - "/etc/localtime:/etc/localtime:ro"
       - "/dev/:/dev/"
       - "/run/:/run/:shared"
-      - "/var/lib/ceph/osd/{{ osd_disk['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ osd_id.stdout }}"
+      - "/var/lib/ceph/osd/{{ osd_disk['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ osd_disk.osd_data_id }}"
       - "kolla_ceph_logs:/var/log/kolla-ceph/"
 
 - name: Run command "ceph osd unset noout && ceph osd unset norebalance"
@@ -53,9 +52,9 @@
   changed_when: False
   when: ceph_action == "upgrade"
 
-- name: Set the device class to osd {{ osd_id.stdout }}
+- name: Set the device class to osd {{ osd_disk.osd_data_id }}
   kolla_ceph_device_class:
-    osd_id: "{{ osd_id.stdout }}"
+    osd_id: "{{ osd_disk.osd_data_id }}"
     device_class: "{{ device_class }}"
   delegate_to: "{{ available_mon }}"
   when: device_class is defined

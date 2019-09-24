@@ -52,10 +52,6 @@ ceph_client_mds_keyring_caps:
   osd: 'allow *'
   mon: 'allow rwx'
 
-partition_name_osd_bootstrap: "{{ 'KOLLA_CEPH_OSD_BOOTSTRAP_BS' if ceph_osd_store_type == 'bluestore' else 'KOLLA_CEPH_OSD_BOOTSTRAP' }}"
-partition_name_cache_bootstrap: "{{ 'KOLLA_CEPH_OSD_CACHE_BOOTSTRAP_BS' if ceph_osd_store_type == 'bluestore' else 'KOLLA_CEPH_OSD_CACHE_BOOTSTRAP' }}"
-partition_name_osd_data: "{{ 'KOLLA_CEPH_DATA_BS' if ceph_osd_store_type == 'bluestore' else 'KOLLA_CEPH_DATA' }}"
-
 ceph_mon_hostname: "{%- if ceph_mon_host_type == 'HOSTNAME' -%}{{ ansible_hostname }}
                     {%- elif ceph_mon_host_type == 'FQDN' -%}{{ ansible_fqdn }}
                     {%- elif ceph_mon_host_type == 'INVENTORY' -%}{{ inventory_hostname }}
