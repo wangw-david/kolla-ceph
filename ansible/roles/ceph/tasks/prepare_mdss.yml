@@ -1,10 +1,11 @@
 ---
-- include_tasks: ../../ceph_pools.yml
-  vars:
+- name: Create ceph mds pools
+  kolla_ceph_pools:
     pool_name: "{{ item.pool_name }}"
     pool_type: "{{ item.pool_type }}"
     pool_pg_num: "{{ item.pool_pg_num }}"
     pool_pgp_num: "{{ item.pool_pgp_num }}"
+    pool_application: "{{ item.pool_application }}"
     pool_erasure_name: "{{ item.pool_erasure_name | default('') }}"
     pool_erasure_profile: "{{ item.pool_erasure_profile | default('') }}"
     pool_rule_name: "{{ item.pool_rule_name | default('') }}"
@@ -15,9 +16,9 @@
     pool_cache_rule: "{{ item.pool_cache_rule | default('') }}"
     pool_cache_pg_num: "{{ item.pool_cache_pg_num | default('') }}"
     pool_cache_pgp_num: "{{ item.pool_cache_pgp_num | default('') }}"
-    pool_application: "{{ item.pool_application }}"
   with_items: "{{ cephfs_pools }}"
   run_once: True
+  delegate_to: "{{ available_mon }}"
 
 - name: Geting ceph mds keyring
   become: true
@@ -35,29 +36,3 @@
           key = {{ ceph_mds_auth.keyring.key }}
     dest: "{{ node_config_directory }}/ceph-mds/ceph.mds.{{ ceph_mds_hostname }}.keyring"
     mode: "0600"
-
-- name: Starting ceph-mds container
-  become: true
-  kolla_docker:
-    action: "start_container"
-    common_options: "{{ docker_common_options }}"
-    image: "{{ ceph_mds_image_full }}"
-    name: "ceph_mds"
-    volumes:
-      - "{{ node_config_directory }}/ceph-mds/:{{ container_config_directory }}/:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-      - "kolla_ceph_logs:/var/log/kolla-ceph/"
-
-- name: Checking whether cephfs is created
-  become: true
-  command: docker exec ceph_mon ceph fs get cephfs
-  register: cephfs_stat
-  failed_when: false
-  changed_when: false
-  run_once: true
-
-- name: Creating ceph new filesystem
-  become: true
-  command: docker exec ceph_mon ceph fs new cephfs cephfs_metadata cephfs_data
-  run_once: true
-  when: cephfs_stat.rc != 0

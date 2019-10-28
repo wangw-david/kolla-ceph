@@ -27,7 +27,7 @@
 
 - name: Registering host from temp file
   set_fact:
-    delegate_host: "{{ lookup('file', '/tmp/kolla_ceph_cluster') }}"
+    bootstrap_host: "{{ lookup('file', '/tmp/kolla_ceph_cluster') }}"
 
 - name: Cleaning up temp file on localhost
   local_action: file path=/tmp/kolla_ceph_cluster state=absent
@@ -37,5 +37,11 @@
 
 - include_tasks: generate_cluster.yml
   when:
-    - delegate_host == 'None' and inventory_hostname == groups['ceph-mon'][0]
+    - bootstrap_host == 'None' and inventory_hostname == groups['ceph-mon'][0]
     - active_mon is not defined
+
+- name: Registering available mon
+  set_fact:
+    available_mon: "{{ bootstrap_host }}"
+  run_once: True
+  when: available_mon == 'None' and bootstrap_host != 'None'

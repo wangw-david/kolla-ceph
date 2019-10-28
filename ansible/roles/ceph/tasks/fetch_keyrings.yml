@@ -1,0 +1,14 @@
+---
+- name: Fetching Ceph keyrings
+  become: true
+  command: docker exec ceph_mon fetch_ceph_keys.py
+  register: ceph_key_files_json
+  changed_when: (ceph_key_files_json.stdout | from_json).changed
+  failed_when: (ceph_key_files_json.stdout | from_json).failed
+  delegate_to: "{{ available_mon }}"
+  run_once: True
+
+- name: Reading json from variable
+  set_fact:
+    ceph_key_files: "{{ (ceph_key_files_json.stdout | from_json) }}"
+  run_once: True

@@ -1,0 +1,17 @@
+---
+- name: Getting ceph mgr keyring
+  become: true
+  kolla_ceph_keyring:
+    name: "mgr.{{ ceph_mgr_hostname }}"
+    caps: "{{ ceph_client_mgr_keyring_caps }}"
+  register: ceph_mgr_keyring
+  delegate_to: "{{ available_mon }}"
+
+- name: Pushing ceph mgr keyring to ceph-mgr
+  become: true
+  copy:
+    content: |
+      [mgr.{{ ceph_mgr_hostname }}]
+          key = {{ ceph_mgr_keyring.keyring.key }}
+    dest: "{{ node_config_directory }}/ceph-mgr/ceph.mgr.{{ ceph_mgr_hostname }}.keyring"
+    mode: "0600"

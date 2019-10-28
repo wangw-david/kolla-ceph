@@ -1,0 +1,104 @@
+---
+- set_fact:
+    install_osd_lvm: "{{ install_osd_lvm }}"
+    osd_ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+    osd_config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+
+- include_tasks: check_ceph_health.yml
+
+- name: Check the ceph.conf of LVM osd
+  debug: msg="Check if the ceph.conf has changed"
+  changed_when: true
+  when: osd_ceph_conf.changed | bool
+  notify:
+    - Restart or recreate ceph-osd container for LVM mode
+
+- name: Check the config.json of LVM osd
+  debug: msg="Check if the config.json has changed"
+  changed_when: true
+  when: osd_config_json.changed | bool
+  notify:
+    - Restart or recreate ceph-osd container for LVM mode
+
+- name: Check ceph-osd-{{ install_osd_lvm.osd_data_id }} container
+  vars:
+    container: "{{ ceph_containers['ceph-osd'] }}"
+  become: true
+  kolla_docker:
+    action: "compare_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ install_osd_lvm.osd_data_id }}"
+      OSD_STORE_TYPE: "{{ install_osd_lvm.osd_store_type }}"
+      OSD_DISK_MODE: "{{ install_osd_lvm.osd_disk_mode }}"
+      OSD_BLOCK: "{{ install_osd_lvm.osd_data_block }}"
+      OSD_WAL: "{{ install_osd_lvm.osd_data_wal | default('') }}"
+      OSD_DB: "{{ install_osd_lvm.osd_data_db | default('') }}"
+    image: "{{ container.image }}"
+    name: "ceph_osd_{{ install_osd_lvm.osd_data_id }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ install_osd_lvm['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ install_osd_lvm.osd_data_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  register: install_container_changed
+  notify:
+    - Restart or recreate ceph-osd container for LVM mode
+
+- name: Checking if ceph-osd-{{ install_osd_lvm.osd_data_id }} container is running
+  become: true
+  kolla_docker:
+    name: "ceph_osd_{{ install_osd_lvm.osd_data_id }}"
+    action: "is_container_running"
+  register: install_container_running
+  failed_when: false
+  notify:
+    - Restart or recreate ceph-osd container for LVM mode
+
+- debug:
+    var: install_container_running
+
+
+- name: Run command "ceph osd unset noout && ceph osd unset norebalance"
+  become: true
+  shell: docker exec ceph_mon ceph osd unset noout && docker exec ceph_mon ceph osd unset norebalance
+  delegate_to: "{{ available_mon }}"
+  changed_when: False
+  when:
+    - install_container_running.Running | bool
+    - osd_config_json.changed | bool
+      or osd_ceph_conf.changed | bool
+      or install_container_changed.changed | bool
+
+- include_tasks: check_ceph_health.yml
+
+- name: Run command "ceph osd set noout && ceph osd set norebalance"
+  become: true
+  shell: docker exec ceph_mon ceph osd set noout && docker exec ceph_mon ceph osd set norebalance
+  delegate_to: "{{ available_mon }}"
+  changed_when: False
+  when:
+    - install_container_running.Running | bool
+    - osd_config_json.changed | bool
+      or osd_ceph_conf.changed | bool
+      or install_container_changed.changed | bool
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Run command "ceph osd unset noout && ceph osd unset norebalance"
+  become: true
+  shell: docker exec ceph_mon ceph osd unset noout && docker exec ceph_mon ceph osd unset norebalance
+  delegate_to: "{{ available_mon }}"
+  changed_when: False
+  when:
+    - install_container_running.Running | bool
+    - osd_config_json.changed | bool
+      or osd_ceph_conf.changed | bool
+      or install_container_changed.changed | bool

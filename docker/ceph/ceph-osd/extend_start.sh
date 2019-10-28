@@ -312,7 +312,6 @@ function prepare_osd_disk {
             divide_bluestore_osd_partition
         fi
 
-        L_OSD_FSID="${OSD_PARTUUID}"
         init_osd_data_part
         init_block_part
 
@@ -332,6 +331,7 @@ function prepare_osd_disk {
         init_journal_part
     fi
 
+    L_OSD_FSID="${OSD_PARTUUID}"
     get_osd_id
     L_OSD_DIR="/var/lib/ceph/osd/ceph-${L_OSD_ID}"
     mkdir -p "${L_OSD_DIR}"
@@ -403,7 +403,7 @@ if [[ "${!KOLLA_BOOTSTRAP[@]}" ]]; then
         prepare_osd_disk
     fi
 
-    ceph-osd --osd-objectstore "${OSD_STORE_TYPE}" -d --mkfs -i "${L_OSD_ID}" --monmap "${L_MON_MAP}" ${L_OSD_HAS_WAL_DB_OR_JOURNAL} --osd-data "${L_OSD_DIR}" --osd-uuid "${L_OSD_FSID}"
+    ceph-osd --osd-objectstore "${OSD_STORE_TYPE}" --mkfs -i "${L_OSD_ID}" --monmap "${L_MON_MAP}" ${L_OSD_HAS_WAL_DB_OR_JOURNAL} --osd-data "${L_OSD_DIR}" --osd-uuid "${L_OSD_FSID}"
     #rm "${OSD_TMP_KEY}"
 
     umount "${L_OSD_DIR}"

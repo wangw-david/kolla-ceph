@@ -1,0 +1,42 @@
+---
+# mgr
+- name: Enable ceph dashboard
+  command: docker exec ceph_mon ceph mgr module enable dashboard --force
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ available_mon }}"
+  when:
+    - enable_ceph_dashboard | bool
+    - "'ceph-mgr' in ceph_install_daemons"
+
+- name: Enable the ceph mgr prometheus module
+  command: docker exec ceph_mon ceph mgr module enable prometheus
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ available_mon }}"
+  when:
+    - enable_prometheus_ceph_mgr_exporter | bool
+    - "'ceph-mgr' in ceph_install_daemons"
+
+# mds
+- name: Checking whether cephfs is created
+  become: true
+  command: docker exec ceph_mon ceph fs get cephfs
+  register: cephfs_stat
+  delegate_to: "{{ available_mon }}"
+  failed_when: false
+  changed_when: false
+  run_once: true
+  when:
+    - enable_ceph_mds | bool
+    - "'ceph-mds' in ceph_install_daemons"
+
+- name: Creating ceph new filesystem
+  become: true
+  command: docker exec ceph_mon ceph fs new cephfs cephfs_metadata cephfs_data
+  run_once: true
+  delegate_to: "{{ available_mon }}"
+  when:
+    - cephfs_stat.rc != 0
+    - enable_ceph_mds | bool
+    - "'ceph-mds' in ceph_install_daemons"

@@ -1,0 +1,96 @@
+---
+- name: Check the ceph.conf of LVM osd
+  vars:
+    osd_ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+  debug: msg="Check if the ceph.conf has changed"
+  changed_when: true
+  when:
+    - osd_ceph_conf.changed | bool
+    - osd_lvm_disks | default([])
+  notify:
+    - Start ceph-osd container for LVM mode
+
+- name: Check the config.json of LVM osd
+  vars:
+    osd_config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+  debug: msg="Check if the config.json has changed"
+  changed_when: true
+  when:
+    - osd_config_json.changed | bool
+    - osd_lvm_disks | default([])
+  notify:
+    - Start ceph-osd container for LVM mode
+
+- name: Check ceph-osd container of LVM mode
+  vars:
+    container: "{{ ceph_containers['ceph-osd'] }}"
+  become: true
+  kolla_docker:
+    action: "compare_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ item.osd_data_id }}"
+      OSD_STORE_TYPE: "{{ item.osd_store_type }}"
+      OSD_DISK_MODE: "{{ item.osd_disk_mode }}"
+      OSD_BLOCK: "{{ item.osd_data_block }}"
+      OSD_WAL: "{{ item.osd_data_wal | default('') }}"
+      OSD_DB: "{{ item.osd_data_db | default('') }}"
+    image: "{{ container.image }}"
+    name: "ceph_osd_{{ item.osd_data_id }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ item.osd_data_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  register: osd_lvm_containers
+  with_items: "{{ osd_lvm_disks | default([]) }}"
+  when: osd_lvm_disks | default([])
+  notify:
+    - Start ceph-osd container for LVM mode
+
+- name: Parsing container changed info for Ceph LVM OSDs
+  set_fact:
+    osd_lvm_containers_changed: "{{ osd_lvm_containers_changed | default([]) | union([{ 'container_name': 'ceph_osd_' + item.0.osd_data_id, 'changed': item.1 }]) }}"
+  no_log: True
+  with_together:
+    - "{{ osd_lvm_disks }}"
+    - "{{ osd_lvm_containers.results | map(attribute='changed') | list }}"
+  when: osd_lvm_disks | default([])
+
+- name: Checking if ceph-osd container of LVM mode is running
+  become: true
+  kolla_docker:
+    name: "ceph_osd_{{ item.osd_data_id }}"
+    action: "is_container_running"
+  register: osd_lvm_runnings
+  with_items: "{{ osd_lvm_disks }}"
+  failed_when: false
+  when: osd_lvm_disks | default([])
+  notify:
+    - Start ceph-osd container for LVM mode
+
+- name: Parsing container running info for Ceph LVM OSDs
+  set_fact:
+    osd_lvm_container_runnings: "{{ osd_lvm_container_runnings | default([]) | union([{ 'container_name': 'ceph_osd_' + item.0.osd_data_id, 'Running': item.1.Running | default('false') }]) }}"
+  no_log: True
+  with_together:
+    - "{{ osd_lvm_disks }}"
+    - "{{ osd_lvm_runnings.results }}"
+  when: osd_lvm_disks | default([])
+
+- name: Set the device class to LVM osd
+  kolla_ceph_device_class:
+    osd_id: "{{ item.osd_data_id }}"
+    device_class: "{{ device_class }}"
+  delegate_to: "{{ available_mon }}"
+  no_log: True
+  with_items: "{{ osd_lvm_disks }}"
+  when:
+    - osd_lvm_disks | default([])
+    - device_class is defined

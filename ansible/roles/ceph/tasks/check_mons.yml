@@ -17,3 +17,8 @@
   with_together:
     - "{{ ceph_mon_check.results }}"
     - "{{ groups['ceph-mon'] }}"
+
+- name: Registering available mon
+  set_fact:
+    available_mon: "{{ active_mon if active_mon is defined else 'None' }}"
+  run_once: True

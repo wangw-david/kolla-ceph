@@ -53,6 +53,7 @@ options:
       - create_volume
       - get_container_env
       - get_container_state
+      - is_container_running
       - pull_image
       - remove_container
       - remove_image
@@ -813,6 +814,21 @@ class DockerWorker(object):
         else:
             self.module.exit_json(**info['State'])
 
+    def is_container_running(self):
+        name = self.params.get('name')
+        info = self.get_container_info()
+
+        if not info:
+            self.module.exit_json(changed=True, msg="No such container: {}".format(name))
+        else:
+            is_running = info['State'].get('Running', False)
+            if not is_running:
+                self.changed = True
+            container_status = info['State'].get('Status', 'None')
+            self.module.exit_json(changed=self.changed,
+                                  msg="The status of the container {} is {}".format(name, container_status),
+                                  Running=is_running)
+
     def stop_container(self):
         name = self.params.get('name')
         graceful_timeout = self.params.get('graceful_timeout')
@@ -896,6 +912,7 @@ def generate_module():
                     choices=['compare_container', 'compare_image',
                              'create_volume', 'get_container_env',
                              'get_container_state', 'pull_image',
+                             'is_container_running',
                              'recreate_or_restart_container',
                              'remove_container', 'remove_image',
                              'remove_volume', 'restart_container',
@@ -949,6 +966,7 @@ def generate_module():
         ['action', 'create_volume', ['name']],
         ['action', 'get_container_env', ['name']],
         ['action', 'get_container_state', ['name']],
+        ['action', 'is_container_running', ['name']],
         ['action', 'recreate_or_restart_container', ['name']],
         ['action', 'remove_container', ['name']],
         ['action', 'remove_image', ['image']],

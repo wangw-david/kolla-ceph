@@ -1,21 +1,22 @@
 ---
-- include: ../../ceph_pools.yml
-  vars:
+- name: Create ceph pools
+  kolla_ceph_pools:
     pool_name: "{{ item.pool_name }}"
+    pool_type: "{{ item.pool_type }}"
+    pool_pg_num: "{{ item.pool_pg_num }}"
+    pool_pgp_num: "{{ item.pool_pgp_num }}"
+    pool_application: "{{ item.pool_application }}"
     pool_erasure_name: "{{ item.pool_erasure_name | default('') }}"
     pool_erasure_profile: "{{ item.pool_erasure_profile | default('') }}"
     pool_rule_name: "{{ item.pool_rule_name | default('') }}"
     pool_rule: "{{ item.pool_rule | default('') }}"
-    pool_type: "{{ item.pool_type }}"
-    pool_pg_num: "{{ item.pool_pg_num }}"
-    pool_pgp_num: "{{ item.pool_pgp_num }}"
     pool_cache_enable: "{{ item.pool_cache_enable | default('false') | bool }}"
     pool_cache_mode: "{{ item.pool_cache_mode | default('') }}"
     pool_cache_rule_name: "{{ item.pool_cache_rule_name | default('') }}"
     pool_cache_rule: "{{ item.pool_cache_rule | default('') }}"
     pool_cache_pg_num: "{{ item.pool_cache_pg_num | default('') }}"
     pool_cache_pgp_num: "{{ item.pool_cache_pgp_num | default('') }}"
-    pool_application: "{{ item.pool_application }}"
   with_items: "{{ ceph_pools }}"
+  delegate_to: "{{ available_mon }}"
   run_once: True
   when: item.create | bool

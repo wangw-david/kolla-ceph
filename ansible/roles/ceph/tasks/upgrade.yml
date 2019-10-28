@@ -1,15 +1,19 @@
 ---
-- include_tasks: config.yml
-
 - include_tasks: check_mons.yml
 
-- name: Registering available mon
-  set_fact:
-    available_mon: "{{ active_mon if active_mon is defined }}"
-  failed_when: "{{ active_mon is undefined }}"
-  run_once: True
-
-- include_tasks: distribute_keyrings.yml
+- include_tasks: start.yml
+  vars:
+    install_daemon_name: "ceph-mon"
+    install_daemon: "{{ {install_daemon_name: ceph_daemons[install_daemon_name] } }}"
+    start_tasks:
+      pre_tasks:
+        - {name: "config"}
+        - {name: "fetch_keyrings"}
+        - {name: "distribute_keyrings"}
+        - {name: "check_ceph_health"}
+  when:
+    - inventory_hostname in groups['ceph-mon']
+    - "'ceph-mon' in ceph_install_daemons"
 
 # NOTE(yoctozepto): this ensures caps for admin are always up-to-date (run as earliest as possible = after MONs start)
 # this is retried because the cluster might not be fully operational yet (quorum gathering)
@@ -25,30 +29,63 @@
   retries: 3
   delay: 15
 
-- include_tasks: start_mons.yml
-  when:
-    - inventory_hostname in groups['ceph-mon']
-    - "'ceph-mon' in ceph_install_daemons"
+# Note(wangwei): When the mon task is not selected, or the limit host has no mon node, here need to perform this task
+# separately.
+- include_tasks: fetch_keyrings.yml
+  when: "'ceph-mon' not in ceph_install_daemons or bootstrap_host is not defined"
 
-- include_tasks: start_mgrs.yml
+- include_tasks: start.yml
+  vars:
+    install_daemon_name: "ceph-mgr"
+    install_daemon: "{{ {install_daemon_name: ceph_daemons[install_daemon_name] } }}"
+    start_tasks:
+      pre_tasks:
+        - {name: "config"}
+        - {name: "distribute_keyrings"}
+        - {name: "prepare_mgrs"}
+        - {name: "check_ceph_health"}
   when:
     - inventory_hostname in groups['ceph-mgr']
     - "'ceph-mgr' in ceph_install_daemons"
 
-- include_tasks: start_osds.yml
+- include_tasks: start.yml
+  vars:
+    install_daemon_name: "ceph-osd"
+    install_daemon: "{{ {install_daemon_name: ceph_daemons[install_daemon_name] } }}"
+    start_tasks:
+      pre_tasks:
+        - {name: "config"}
+        - {name: "distribute_keyrings"}
+        - {name: "prepare_osds"}
+        - {name: "start_upgrade_osds"}
   when:
     - inventory_hostname in groups['ceph-osd']
     - "'ceph-osd' in ceph_install_daemons"
 
-- include_tasks: start_rgws.yml
+- include_tasks: start.yml
+  vars:
+    install_daemon_name: "ceph-rgw"
+    install_daemon: "{{ {install_daemon_name: ceph_daemons[install_daemon_name] } }}"
+    start_tasks:
+      pre_tasks:
+        - {name: "config"}
+        - {name: "distribute_keyrings"}
+        - {name: "check_ceph_health"}
   when:
-    - enable_ceph_rgw | bool
+    - ceph_daemons[install_daemon_name].enabled | bool
     - inventory_hostname in groups['ceph-rgw']
     - "'ceph-rgw' in ceph_install_daemons"
 
-- include_tasks: start_mdss.yml
+- include_tasks: start.yml
+  vars:
+    install_daemon_name: "ceph-mds"
+    install_daemon: "{{ {install_daemon_name: ceph_daemons[install_daemon_name] } }}"
+    start_tasks:
+      pre_tasks:
+        - {name: "config"}
+        - {name: "prepare_mdss"}
   when:
-    - enable_ceph_mds | bool
+    - ceph_daemons[install_daemon_name].enabled | bool
     - inventory_hostname in groups['ceph-mds']
     - "'ceph-mds' in ceph_install_daemons"
 

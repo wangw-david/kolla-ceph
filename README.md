@@ -136,10 +136,6 @@ ceph_pool_pgp_num: 32
 
 osd_initial_weight: "auto"
 
-# Set the store type for ceph OSD
-# Valid options are [ filestore, bluestore]
-ceph_osd_store_type: "bluestore"
-
 ceph_cluster_fsid: "4a9e463a-4853-4237-a5c5-9ae9d25bacda"
 ```
 

@@ -1,5 +1,15 @@
 ---
+- include_tasks: config.yml
+  vars:
+    install_daemon_name: "first ceph-mon"
+    install_daemon:
+      ceph-mon:
+        handlers:
+          - "Starting first ceph-mon container"
+
 - name: Generating initial Ceph keyrings and monmap
+  vars:
+    bootstrap_mon: "{{ ceph_containers['ceph-mon'] }}"
   become: true
   kolla_docker:
     action: "start_container"
@@ -10,20 +20,18 @@
       KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
       MON_IP: "{{ storage_interface_address }}"
       HOSTNAME: "{{ ceph_mon_hostname }}"
-    image: "{{ ceph_mon_image_full }}"
+    image: "{{ bootstrap_mon.image }}"
     labels:
       BOOTSTRAP:
     name: "bootstrap_ceph_mon"
     restart_policy: no
-    volumes:
-      - "{{ node_config_directory }}/ceph-mon/:{{ container_config_directory }}/:ro"
-      - "/etc/localtime:/etc/localtime:ro"
-      - "ceph_mon:/var/lib/ceph"
-      - "ceph_mon_config:/etc/ceph"
-      - "kolla_ceph_logs:/var/log/kolla-ceph/"
-
-- include_tasks: start_mons.yml
+    volumes: "{{ bootstrap_mon.volumes | reject('equalto', '') | list }}"
+  notify:
+    - Starting first ceph-mon container
 
 - name: Setting host for cluster files
   set_fact:
-    delegate_host: "{{ inventory_hostname }}"
+    bootstrap_host: "{{ inventory_hostname }}"
+
+- name: Flush handlers
+  meta: flush_handlers

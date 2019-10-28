@@ -1,0 +1,13 @@
+---
+- include_tasks: start_upgrade_disk_osd.yml
+  vars:
+    install_osd_id: "{{ item.0.stdout }}"
+    install_osd_disk: "{{ item.1 }}"
+  with_together:
+    - "{{ osd_ids.results }}"
+    - "{{ osd_disk_disks | default([]) }}"
+
+- include_tasks: start_upgrade_lvm_osd.yml
+  vars:
+    install_osd_lvm: "{{ item }}"
+  with_items: "{{ osd_lvm_disks | default([]) }}"

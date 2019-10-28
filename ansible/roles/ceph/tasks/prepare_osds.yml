@@ -10,19 +10,19 @@
 
 - name: Parsing disk info for Ceph OSDs
   set_fact:
-    osds: "{{ (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).disks|from_json }}"
+    osd_disks: "{{ (osd_lookup.stdout.split('localhost | SUCCESS => ')[1]|from_json).disks|from_json }}"
 
 - name: Filter DISK type osd
   set_fact:
-    osds_disk: "{{ osds_disk | default([]) | union([ item ]) }}"
-  with_items: "{{ osds }}"
+    osd_disk_disks: "{{ osd_disk_disks | default([]) | union([ item ]) }}"
+  with_items: "{{ osd_disks }}"
   no_log: True
   when: item.osd_disk_mode == "DISK"
 
 - name: Filter LVM type osd
   set_fact:
-    osds_lvm: "{{ osds_lvm | default([]) | union([ item ]) }}"
-  with_items: "{{ osds }}"
+    osd_lvm_disks: "{{ osd_lvm_disks | default([]) | union([ item ]) }}"
+  with_items: "{{ osd_disks }}"
   no_log: True
   when: item.osd_disk_mode == "LVM"
 
@@ -34,7 +34,7 @@
     state: mounted
     name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
     opts: "{{ ceph_regular_mount_options if item.partition_type | default('regular') == 'regular' else ceph_iscsi_mount_options }}"
-  with_items: "{{ osds_disk | default([]) }}"
+  with_items: "{{ osd_disk_disks | default([]) }}"
 
 - name: Mounting Ceph OSD volumes for LVM filestore
   become: true
@@ -44,7 +44,7 @@
     state: mounted
     name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
     opts: "{{ ceph_tmpfs_mount_options }}"
-  with_items: "{{ osds_lvm | default([]) }}"
+  with_items: "{{ osd_lvm_disks | default([]) }}"
   when: item.osd_store_type == "filestore"
 
 - name: Mounting Ceph OSD volumes for LVM bluestore
@@ -55,26 +55,13 @@
     state: mounted
     name: "/var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}"
     opts: "{{ ceph_tmpfs_mount_options }}"
-  with_items: "{{ osds_lvm | default([]) }}"
+  with_items: "{{ osd_lvm_disks | default([]) }}"
   when: item.osd_store_type == "bluestore"
 
 - name: Gathering OSD IDs for DISK
   become: true
   command: "cat /var/lib/ceph/osd/{{ item['osd_fs_uuid'] }}/whoami"
-  with_items: "{{ osds_disk | default([]) }}"
-  register: osd_id_disk
+  with_items: "{{ osd_disk_disks | default([]) }}"
+  register: osd_ids
   changed_when: False
-  failed_when: osd_id_disk.rc != 0
-
-- include: start_disk_osd.yml
-  vars:
-    osd_id: "{{ item.0 }}"
-    osd_disk: "{{ item.1 }}"
-  with_together:
-    - "{{ osd_id_disk.results }}"
-    - "{{ osds_disk | default([]) }}"
-
-- include: start_lvm_osd.yml
-  vars:
-    osd_disk: "{{ item }}"
-  with_items: "{{ osds_lvm | default([]) }}"
+  failed_when: osd_ids.rc != 0

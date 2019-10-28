@@ -1,0 +1,17 @@
+---
+- name: Running the pre-configured task of {{ install_daemon_name }}
+  include_tasks: "{{ pre_task.name }}.yml"
+  when: pre_task.enable | default('true') | bool
+  with_items: "{{ start_tasks.pre_tasks | default([]) }}"
+  loop_control:
+    loop_var: pre_task
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Running the post-configured task of {{ install_daemon_name }}
+  include_tasks: "{{ post_task.name }}.yml"
+  when: post_task.enable | default('true') | bool
+  with_items: "{{ start_tasks.post_tasks | default([]) }}"
+  loop_control:
+    loop_var: post_task

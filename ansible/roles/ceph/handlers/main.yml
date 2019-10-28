@@ -1,0 +1,298 @@
+---
+- name: Starting first ceph-mon container
+  vars:
+    daemon_name: "ceph-mon"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment: "{{ container.environment }}"
+    name: "{{ container.name }}"
+    image: "{{ container.image }}"
+    volumes: "{{ container.volumes | reject('equalto', '') | list }}"
+  when:
+    - bootstrap_host is defined
+    - bootstrap_host == inventory_hostname
+
+- name: Restart or recreate ceph-mon container
+  vars:
+    daemon_name: "ceph-mon"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mon_container: "{{ check_ceph_containers.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mon_running: "{{ check_ceph_running.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment: "{{ container.environment }}"
+    name: "{{ container.name }}"
+    image: "{{ container.image }}"
+    volumes: "{{ container.volumes | reject('equalto', '') | list }}"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and ceph_mon_running.Running | default('false') | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or ceph_mon_container.changed | bool
+
+- name: Restart or recreate ceph-mgr container
+  vars:
+    daemon_name: "ceph-mgr"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mgr_container: "{{ check_ceph_containers.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mgr_running: "{{ check_ceph_running.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    name: "{{ container.name }}"
+    image: "{{ container.image }}"
+    volumes: "{{ container.volumes | reject('equalto', '') | list }}"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and ceph_mgr_running.Running | default('false') | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or ceph_mgr_container.changed | bool
+
+- name: Start ceph-osd container for DISK mode
+  vars:
+    daemon_name: "ceph-osd"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ item.0.osd_id }}"
+      OSD_STORE_TYPE: "{{ item.1.osd_store_type }}"
+      OSD_DISK_MODE: "{{ item.1.osd_disk_mode }}"
+      OSD_BLOCK: "{{ item.1.osd_data_block | default('') }}"
+      OSD_WAL: "{{ item.1.osd_data_wal | default('') }}"
+      OSD_DB: "{{ item.1.osd_data_db | default('') }}"
+    name: "ceph_osd_{{ item.0.osd_id }}"
+    image: "{{ container.image }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ item.1['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ item.0.osd_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - osd_disk_ids
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and item.3.Running | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or item.2.changed | bool
+  with_together:
+    - "{{ osd_disk_ids | default([]) }}"
+    - "{{ osd_disk_disks | default([]) }}"
+    - "{{ osd_disk_containers_changed }}"
+    - "{{ osd_disk_container_runnings }}"
+
+- name: Start ceph-osd container for LVM mode
+  vars:
+    daemon_name: "ceph-osd"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ item.0.osd_data_id }}"
+      OSD_STORE_TYPE: "{{ item.0.osd_store_type }}"
+      OSD_DISK_MODE: "{{ item.0.osd_disk_mode }}"
+      OSD_BLOCK: "{{ item.0.osd_data_block }}"
+      OSD_WAL: "{{ item.0.osd_data_wal | default('') }}"
+      OSD_DB: "{{ item.0.osd_data_db | default('') }}"
+    name: "ceph_osd_{{ item.0.osd_data_id }}"
+    image: "{{ container.image }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ item.0['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ item.0.osd_data_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - osd_lvm_disks
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and item.2.Running | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or item.1.changed | bool
+  with_together:
+    - "{{ osd_lvm_disks | default([]) }}"
+    - "{{ osd_lvm_containers_changed }}"
+    - "{{ osd_lvm_container_runnings }}"
+
+- name: Restart or recreate ceph-osd container for DISK mode
+  vars:
+    daemon_name: "ceph-osd"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ install_osd_id }}"
+      OSD_STORE_TYPE: "{{ install_osd_disk.osd_store_type }}"
+      OSD_DISK_MODE: "{{ install_osd_disk.osd_disk_mode }}"
+      OSD_BLOCK: "{{ install_osd_disk.osd_data_block | default('') }}"
+      OSD_WAL: "{{ install_osd_disk.osd_data_wal | default('') }}"
+      OSD_DB: "{{ install_osd_disk.osd_data_db | default('') }}"
+    name: "ceph_osd_{{ install_osd_id }}"
+    image: "{{ container.image }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ install_osd_disk['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ install_osd_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - install_osd_id
+    - install_osd_disk
+    - install_container_changed
+    - install_container_running.Running | bool
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or install_container_changed.changed | bool
+
+- name: Restart or recreate ceph-osd container for LVM mode
+  vars:
+    daemon_name: "ceph-osd"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ install_osd_lvm.osd_data_id }}"
+      OSD_STORE_TYPE: "{{ install_osd_lvm.osd_store_type }}"
+      OSD_DISK_MODE: "{{ install_osd_lvm.osd_disk_mode }}"
+      OSD_BLOCK: "{{ install_osd_lvm.osd_data_block }}"
+      OSD_WAL: "{{ install_osd_lvm.osd_data_wal | default('') }}"
+      OSD_DB: "{{ install_osd_lvm.osd_data_db | default('') }}"
+    image: "{{ container.image }}"
+    name: "ceph_osd_{{ install_osd_lvm.osd_data_id }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ install_osd_lvm['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ install_osd_lvm.osd_data_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - install_osd_lvm
+    - install_container_changed
+    - install_container_running.Running | bool
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or install_container_changed.changed | bool
+
+- name: Restart or recreate ceph-rgw container
+  vars:
+    daemon_name: "ceph-rgw"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_rgw_container: "{{ check_ceph_containers.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_rgw_running: "{{ check_ceph_running.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    name: "{{ container.name }}"
+    image: "{{ container.image }}"
+    volumes: "{{ container.volumes | reject('equalto', '') | list }}"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and ceph_rgw_running.Running | default('false') | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or ceph_rgw_container.changed | bool
+
+- name: Restart or recreate ceph-mds container
+  vars:
+    daemon_name: "ceph-mds"
+    daemon: "{{ ceph_daemons[daemon_name] }}"
+    container: "{{ ceph_containers[daemon_name] }}"
+    config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mds_container: "{{ check_ceph_containers.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+    ceph_mds_running: "{{ check_ceph_running.results|selectattr('item.key', 'equalto', daemon_name)|first }}"
+  become: true
+  kolla_docker:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    name: "{{ container.name }}"
+    image: "{{ container.image }}"
+    volumes: "{{ container.volumes | reject('equalto', '') | list }}"
+  when:
+    - inventory_hostname in groups[daemon.group]
+    - daemon.enabled | bool
+    - not (ceph_action == "deploy"
+      and (not daemon.running_restart | bool)
+      and ceph_mds_running.Running | default('false') | bool)
+    - config_json.changed | bool
+      or (ceph_conf.changed | bool and daemon.conf_restart | bool)
+      or ceph_mds_container.changed | bool

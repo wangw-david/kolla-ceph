@@ -1,6 +1,91 @@
 ---
 project_name: "ceph"
 
+ceph_daemons:
+  ceph-mon:
+    conf_restart: "{{ ceph_conf_change_restart | bool }}"
+    running_restart: "{{ ceph_container_running_restart | bool }}"
+    group: ceph-mon
+    enabled: True
+    handlers:
+      - "Restart or recreate ceph-mon container"
+  ceph-mgr:
+    conf_restart: "{{ ceph_conf_change_restart | bool }}"
+    running_restart: "{{ ceph_container_running_restart | bool }}"
+    group: ceph-mgr
+    enabled: True
+    handlers:
+      - "Restart or recreate ceph-mgr container"
+  ceph-osd:
+    conf_restart: "{{ ceph_conf_change_restart | bool }}"
+    running_restart: "{{ ceph_container_running_restart | bool }}"
+    group: ceph-osd
+    enabled: True
+    handlers: []
+  ceph-rgw:
+    conf_restart: "{{ ceph_conf_change_restart | bool }}"
+    running_restart: "{{ ceph_container_running_restart | bool }}"
+    group: ceph-rgw
+    enabled: "{{ enable_ceph_rgw | bool }}"
+    handlers:
+      - "Restart or recreate ceph-rgw container"
+  ceph-mds:
+    conf_restart: "{{ ceph_conf_change_restart | bool }}"
+    running_restart: "{{ ceph_container_running_restart | bool }}"
+    group: ceph-mds
+    enabled: "{{ enable_ceph_mds | bool }}"
+    handlers:
+      - "Restart or recreate ceph-mds container"
+
+ceph_containers:
+  ceph-mon:
+    name: "ceph_mon"
+    image: "{{ ceph_mon_image_full }}"
+    keyrings:
+      - "ceph.client.admin.keyring"
+      - "ceph.client.mon.keyring"
+      - "ceph.client.radosgw.keyring"
+      - "ceph.monmap"
+    environment:
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      HOSTNAME: "{{ ceph_mon_hostname }}"
+    volumes:
+      - "{{ node_config_directory }}/ceph-mon/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "ceph_mon:/var/lib/ceph"
+      - "ceph_mon_config:/etc/ceph"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  ceph-mgr:
+    name: "ceph_mgr"
+    image: "{{ ceph_mgr_image_full }}"
+    keyrings:
+      - "ceph.client.admin.keyring"
+    volumes:
+      - "{{ node_config_directory }}/ceph-mgr/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "kolla_ceph_logs:/var/log/kolla-ceph"
+  ceph-osd:
+    image: "{{ ceph_osd_image_full }}"
+    keyrings:
+      - "ceph.client.admin.keyring"
+  ceph-rgw:
+    name: "ceph_rgw"
+    image: "{{ ceph_rgw_image_full }}"
+    keyrings:
+      - "ceph.client.admin.keyring"
+      - "ceph.client.radosgw.keyring"
+    volumes:
+      - "{{ node_config_directory }}/ceph-rgw/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  ceph-mds:
+    name: "ceph_mds"
+    image: "{{ ceph_mds_image_full }}"
+    volumes:
+      - "{{ node_config_directory }}/ceph-mds/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+
 ####################
 # Docker
 ####################

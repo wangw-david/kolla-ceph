@@ -1,0 +1,104 @@
+---
+- name: Parsing id info for Ceph DISK OSDs
+  set_fact:
+    osd_disk_ids: "{{ osd_disk_ids | default([]) | union([{ 'osd_id': item }]) }}"
+  with_items: "{{ osd_ids.results | map(attribute='stdout') | list }}"
+  no_log: True
+
+- name: Check the ceph.conf of DISK osd
+  vars:
+    osd_ceph_conf: "{{ ceph_confs.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+  debug: msg="Check if the ceph.conf has changed"
+  changed_when: true
+  run_once: true
+  when:
+    - osd_ceph_conf.changed | bool
+    - osd_disk_ids | default([])
+  notify:
+    - Start ceph-osd container for DISK mode
+
+- name: Check the config.json of DISK osd
+  vars:
+    osd_config_json: "{{ ceph_config_jsons.results|selectattr('item.key', 'equalto', 'ceph-osd')|first }}"
+  debug: msg="Check if the config.json has changed"
+  run_once: true
+  changed_when: true
+  when:
+    - osd_config_json.changed | bool
+    - osd_disk_ids | default([])
+  notify:
+    - Start ceph-osd container for DISK mode
+
+- name: Check ceph-osd container of DISK mode
+  vars:
+    container: "{{ ceph_containers['ceph-osd'] }}"
+  become: true
+  kolla_docker:
+    action: "compare_container"
+    common_options: "{{ docker_common_options }}"
+    environment:
+      OSD_START: ""
+      KOLLA_CONFIG_STRATEGY: "{{ config_strategy }}"
+      OSD_ID: "{{ item.0.osd_id }}"
+      OSD_STORE_TYPE: "{{ item.1.osd_store_type }}"
+      OSD_DISK_MODE: "{{ item.1.osd_disk_mode }}"
+      OSD_BLOCK: "{{ item.1.osd_block | default('') }}"
+      OSD_WAL: "{{ item.1.osd_wal | default('') }}"
+      OSD_DB: "{{ item.1.osd_db | default('') }}"
+    image: "{{ container.image }}"
+    name: "ceph_osd_{{ item.0.osd_id }}"
+    pid_mode: "host"
+    privileged: True
+    volumes:
+      - "{{ node_config_directory }}/ceph-osd/:{{ container_config_directory }}/:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/dev/:/dev/"
+      - "/run/:/run/:shared"
+      - "/var/lib/ceph/osd/{{ item.1['osd_fs_uuid'] }}:/var/lib/ceph/osd/ceph-{{ item.0.osd_id }}"
+      - "kolla_ceph_logs:/var/log/kolla-ceph/"
+  register: osd_disk_containers
+  with_together:
+    - "{{ osd_disk_ids | default([]) }}"
+    - "{{ osd_disk_disks | default([]) }}"
+  when: osd_disk_ids | default([])
+  notify:
+    - Start ceph-osd container for DISK mode
+
+- name: Parsing container changed info for Ceph DISK OSDs
+  set_fact:
+    osd_disk_containers_changed: "{{ osd_disk_containers_changed | default([]) | union([{ 'container_name': 'ceph_osd_' + item.0.osd_id, 'changed': item.1 }]) }}"
+  with_together:
+    - "{{ osd_disk_ids }}"
+    - "{{ osd_disk_containers.results | map(attribute='changed') | list }}"
+  when: osd_disk_ids | default([])
+
+- name: Checking if ceph-osd container of DISK mode is running
+  become: true
+  kolla_docker:
+    name: "ceph_osd_{{ item.osd_id }}"
+    action: "is_container_running"
+  register: osd_disk_runnings
+  with_items: "{{ osd_disk_ids }}"
+  failed_when: false
+  when: osd_disk_ids | default([])
+  notify:
+    - Start ceph-osd container for DISK mode
+
+- name: Parsing container running info for Ceph DISK OSDs
+  set_fact:
+    osd_disk_container_runnings: "{{ osd_disk_container_runnings | default([]) | union([{ 'container_name': 'ceph_osd_' + item.0.osd_id, 'Running': item.1.Running | default('false') }]) }}"
+  no_log: True
+  with_together:
+    - "{{ osd_disk_ids }}"
+    - "{{ osd_disk_runnings.results }}"
+  when: osd_disk_ids | default([])
+
+- name: Set the device class to DISK osd
+  kolla_ceph_device_class:
+    osd_id: "{{ item.osd_id }}"
+    device_class: "{{ device_class }}"
+  delegate_to: "{{ available_mon }}"
+  with_items: "{{ osd_disk_ids }}"
+  when:
+    - osd_disk_ids | default([])
+    - device_class is defined

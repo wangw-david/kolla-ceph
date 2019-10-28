@@ -125,13 +125,17 @@ ceph_tmpfs_mount_options: "nodev,nosuid"
 # Valid options are [ erasure, replicated ]
 ceph_pool_type: "replicated"
 
-# Integrate Ceph Rados Object Gateway with OpenStack keystone
-enable_ceph_rgw_keystone: "no"
-
 # When ceph is upgraded, whether to enable cluster status monitoring.
 # When the value is yes, please confirm that the status of the ceph
 # cluster is HEALTH_OK and then execute.
 enable_upgrade_health_check: "no"
+
+# Whether to restart the container when it is running. This parameter is only
+# valid in deploy action and is higher than other restart conditions.
+ceph_container_running_restart: "yes"
+
+# Whether to restart the container when the ceph.conf file changes
+ceph_conf_change_restart: "no"
 
 # Maximum number and interval of ceph cluster check
 ceph_health_check_retries: 15
@@ -157,10 +161,6 @@ ceph_cache_rule: "cache host"
 # Kolla Ceph documentation for more information.
 ceph_pool_pg_num: 8
 ceph_pool_pgp_num: 8
-
-# Set the store type for ceph OSD
-# Valid options are [ filestore, bluestore]
-ceph_osd_store_type: "bluestore"
 
 # Set the host type for ceph daemons
 # Valid options are [ IP, HOSTNAME, FQDN, INVENTORY ]
