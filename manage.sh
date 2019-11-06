@@ -313,7 +313,7 @@ if [[ "${CEPH_ACTION}" == "deploy" || "${CEPH_ACTION}" == "upgrade" ]] && [[ "${
     pull_images
 fi
 
-if [[ "${CEPH_ACTION}" == "upgrade" ]]; then
+if [[ "${CEPH_ACTION}" == "upgrade" || "${CEPH_ACTION}" == "reconfigure" ]]; then
     CEPH_SERIAL=1
 fi
 process_cmd

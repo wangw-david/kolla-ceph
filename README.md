@@ -488,6 +488,20 @@ enable_upgrade_health_check: "no"
 ceph_health_check_retries: 15
 ceph_health_check_delay: 20
  ```
+### Modify the configuration of ceph containers
+
+Enable the following parameters, then ``reconfigure`` action will update the configuration file and restart the container with one by one. The process is the same as the upgrade.
+```
+Ceph_conf_change_restart: "yes"
+```
+
+- running command
+
+```
+Sh manage.sh reconfigure --cluster test --image nautilus-14.2.2.0001
+```
+
+The difference between ``reconfigure`` and ``upgrade`` is that ``reconfigure`` will only restart the container when the configuration changes. When the image or the environment variable of container changes, it will be skipped, and the new container will not be recreated. ``reconfigure`` does not need to force specify the install daemon.
 
 ### Customize the pool to be created
 

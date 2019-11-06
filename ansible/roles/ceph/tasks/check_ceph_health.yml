@@ -9,5 +9,5 @@
   delay: "{{ ceph_health_check_delay }}"
   changed_when: False
   when:
-    - ceph_action == "upgrade"
+    - ceph_action == "upgrade" or ceph_action == "reconfigure"
     - enable_upgrade_health_check | bool
