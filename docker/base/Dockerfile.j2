@@ -10,7 +10,7 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
         {%- if not loop.last %} \{% endif -%}
 {%- endfor %}
 
-LABEL ceph_version="{{ ceph_version }}"
+LABEL ceph_version_release="{{ ceph_version }}-{{ ceph_release }}"
 
 {% import "macros.j2" as macros with context %}
 {% block base_header %}{% endblock %}
@@ -20,6 +20,7 @@ ENV KOLLA_BASE_DISTRO={{ base_distro }} \
     KOLLA_INSTALL_METATYPE={{ install_metatype }} \
     KOLLA_DISTRO_PYTHON_VERSION={{ distro_python_version }} \
     KOLLA_BASE_ARCH={{ base_arch }} \
+    KOLLA_CEPH_VERSION={{ ceph_version }} \
     KOLLA_CEPH_RELEASE={{ ceph_release }}
 
 #### Customize PS1 to be used with bash shell
@@ -61,7 +62,7 @@ COPY yum.conf /etc/yum.conf
 ] %}
 
 {% set base_yum_repo_files = [
-    'ceph.repo',
+    "ceph-${KOLLA_CEPH_VERSION}.repo",
     'td.repo'
 ] %}
 

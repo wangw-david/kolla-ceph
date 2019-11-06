@@ -37,14 +37,18 @@ LABEL maintainer="{{ maintainer }}" name="{{ image_name }}" build-date="{{ build
         'librbd1-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'librgw2-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'python-cephfs-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
-        'python-ceph-argparse-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
-        'python-rados-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'python-rados-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'python-rgw-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'python-rbd-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'ceph-radosgw-${KOLLA_CEPH_RELEASE}-0.el7.x86_64',
         'librados2-${KOLLA_CEPH_RELEASE}-0.el7.x86_64'
      ] %}
+
+    {% if ceph_version == 'nautilus' %}
+        {% set kolla_toolbox_packages = kolla_toolbox_packages + [
+            'python-ceph-argparse-${KOLLA_CEPH_RELEASE}-0.el7.x86_64'
+        ] %}
+    {% endif %}
 {% endif %}
 {{ macros.install_packages(kolla_toolbox_packages | customizable("packages")) }}
 

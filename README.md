@@ -38,7 +38,7 @@ image_ceph = fluentd,cron,kolla-toolbox,ceph
 
 ``Note:
 1.Mainly modify the information of docker regisry.
-2.We can control the fixed version number with ceph_release.``
+2.We can control the fixed ceph version and release number with ceph_version and ceph_release.``
 
 ### Run the build script
 
@@ -488,3 +488,96 @@ enable_upgrade_health_check: "no"
 ceph_health_check_retries: 15
 ceph_health_check_delay: 20
  ```
+
+### Customize the pool to be created
+
+```
+A complete pool definition contains the following items:
+
+ +----------------------+---------------------------------------------------+
+ | item name            | required                                          |
+ +======================+===================================================+
+ | pool_name            | Required                                          |
+ +----------------------+---------------------------------------------------+
+ | pool_type            | Required                                          |
+ +----------------------+---------------------------------------------------+
+ | pool_pg_num          | Required                                          |
+ +----------------------+---------------------------------------------------+
+ | pool_pgp_num         | Required                                          |
+ +----------------------+---------------------------------------------------+
+ | pool_erasure_name    | Optional, required when pool_type is erasure      |
+ +----------------------+---------------------------------------------------+
+ | pool_erasure_profile | Optional, required when pool_type is erasure      |
+ +----------------------+---------------------------------------------------+
+ | pool_rule_name       | Optional, required when pool_type is replicated   |
+ +----------------------+---------------------------------------------------+
+ | pool_rule            | Optional, required when pool_type is replicated   |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_enable    | Optional, default is false                        |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_mode      | Optional, required when pool_cache_enable is true |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_rule_name | Optional, required when pool_cache_enable is true |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_rule      | Optional, required when pool_cache_enable is true |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_pg_num    | Optional, required when pool_cache_enable is true |
+ +----------------------+---------------------------------------------------+
+ | pool_cache_pgp_num   | Optional, required when pool_cache_enable is true |
+ +----------------------+---------------------------------------------------+
+ | pool_application     | Required                                          |
+ +----------------------+---------------------------------------------------+
+
+.. note::
+
+    For erasure pool, just specify the erasure profile name, ceph will
+    automatically generate the corresponding crush rule name which is the same
+    as the pool name.
+```
+
+You can customize the following items in globals.yml:
+
+```
+ceph_pools:
+  - pool_name: "rbd"
+    pool_type: "replicated"
+    pool_rule_name: "hdd-rep"
+    pool_rule: "default host hdd"
+    pool_pg_num: 32
+    pool_pgp_num: 32
+    pool_application: "rbd"
+    create: "yes"
+  - pool_name: "rbd-ec"
+    pool_type: "erasure"
+    pool_erasure_name: "hdd-ec"
+    pool_erasure_profile: "k=2 m=1 crush-failure-domain=osd crush-device-class=hdd"
+    pool_pg_num: 32
+    pool_pgp_num: 32
+    pool_application: "rbd"
+    create: "yes"
+```
+
+### remove old cluster
+
+```
+#!/bin/bash
+docker stop $(docker ps -a -q) && docker rm $(docker ps -a -q)
+sudo rm  -rf  /etc/kolla-ceph/*
+
+sudo docker  volume  rm  ceph_mon  ceph_mon_config kolla_ceph_logs
+
+sudo  umount -l  /var/lib/ceph/osd/*
+
+sudo sed -i '/\/var\/lib\/ceph\/osd/d' /etc/fstab
+sudo  rm  -rf  /var/lib/ceph
+
+systemctl daemon-reload
+# disk mode
+sudo sgdisk --zap-all -- /dev/sdb
+sudo sgdisk --zap-all -- /dev/sdc
+sudo sgdisk --zap-all -- /dev/sdd
+
+# lvm mode
+vgremove -y $(vgs | grep "ceph-" | awk '{print $1}')
+pvremove /dev/sdb1 /dev/sdc1 /dev/sdd1
+```

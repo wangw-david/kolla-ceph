@@ -6,8 +6,8 @@
   run_once: true
   delegate_to: "{{ available_mon }}"
   when:
-    - enable_ceph_dashboard | bool
     - "'ceph-mgr' in ceph_install_daemons"
+    - enable_ceph_dashboard | bool
 
 - name: Enable the ceph mgr prometheus module
   command: docker exec ceph_mon ceph mgr module enable prometheus
@@ -15,8 +15,8 @@
   run_once: true
   delegate_to: "{{ available_mon }}"
   when:
-    - enable_prometheus_ceph_mgr_exporter | bool
     - "'ceph-mgr' in ceph_install_daemons"
+    - enable_prometheus_ceph_mgr_exporter | bool
 
 # mds
 - name: Checking whether cephfs is created
@@ -28,8 +28,8 @@
   changed_when: false
   run_once: true
   when:
-    - enable_ceph_mds | bool
     - "'ceph-mds' in ceph_install_daemons"
+    - enable_ceph_mds | bool
 
 - name: Creating ceph new filesystem
   become: true
@@ -37,6 +37,7 @@
   run_once: true
   delegate_to: "{{ available_mon }}"
   when:
-    - cephfs_stat.rc != 0
-    - enable_ceph_mds | bool
     - "'ceph-mds' in ceph_install_daemons"
+    - enable_ceph_mds | bool
+    - cephfs_stat.rc != 0
+
